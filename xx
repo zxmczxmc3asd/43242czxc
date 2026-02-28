@@ -1,0 +1,433 @@
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║          ShiftLock GUI — Dark Red Edition               ║
+-- ║          Otimizado para Mobile & Desktop                ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+local ref = cloneref or function(x) return x end
+local S   = function(n) return ref(game:GetService(n)) end
+
+local Plrs = S("Players")
+local Tw   = S("TweenService")
+local UIS  = S("UserInputService")
+local RS   = S("RunService")
+local Wk   = S("Workspace")
+local CG   = S("CoreGui")
+local plr  = Plrs.LocalPlayer
+
+-- ─── Utilidades ───────────────────────────────────────────────
+
+local function NA(i)
+	if not i then return end
+	i.Name        = "\000"
+	i.Archivable  = false
+end
+
+local function parentUI(g)
+	if gethui then
+		NA(g); g.Parent = gethui(); return g
+	end
+	local rg = CG and CG:FindFirstChild("RobloxGui")
+	if rg then NA(g); g.Parent = rg; return g end
+	if CG then NA(g); g.Parent = CG; return g end
+	local pg = plr and plr:FindFirstChildWhichIsA("PlayerGui")
+	if pg then
+		NA(g); g.Parent = pg
+		g.ResetOnSpawn = false
+	end
+	return g
+end
+
+local function getParts()
+	local c = plr.Character or plr.CharacterAdded:Wait()
+	local hum, hrp
+	for _, d in ipairs(c:GetDescendants()) do
+		if not hum and d:IsA("Humanoid")  then hum = d end
+		if not hrp and d:IsA("BasePart") and d.Name == "HumanoidRootPart" then hrp = d end
+		if hum and hrp then break end
+	end
+	return c,
+		hum or c:WaitForChild("Humanoid"),
+		hrp or c:WaitForChild("HumanoidRootPart")
+end
+
+local function lockMouse(v)
+	if UIS.MouseEnabled then
+		UIS.MouseBehavior = v
+			and Enum.MouseBehavior.LockCenter
+			or  Enum.MouseBehavior.Default
+	end
+end
+
+-- ─── Câmera / AutoRotate ──────────────────────────────────────
+
+local rotCon, oldAR
+
+local function faceCam(h, hrp, v)
+	if rotCon then rotCon:Disconnect(); rotCon = nil end
+	if v then
+		oldAR         = h.AutoRotate
+		h.AutoRotate  = false
+		rotCon = RS.RenderStepped:Connect(function()
+			local cam = Wk.CurrentCamera
+			if not (hrp and cam) then return end
+			local lv   = cam.CFrame.LookVector
+			local flat = Vector3.new(lv.X, 0, lv.Z)
+			if flat.Magnitude > 0.0001 then
+				hrp.CFrame = CFrame.lookAt(
+					hrp.Position,
+					hrp.Position + flat.Unit,
+					Vector3.yAxis
+				)
+			end
+		end)
+	elseif oldAR ~= nil then
+		h.AutoRotate = oldAR
+	end
+end
+
+local function reapply(v)
+	task.defer(function()
+		local _, h, r = getParts()
+		lockMouse(v)
+		faceCam(h, r, v)
+	end)
+end
+
+-- ─── Detecção de dispositivo ──────────────────────────────────
+
+local isMobile = UIS.TouchEnabled and not UIS.MouseEnabled
+local BTN_SIZE   = isMobile and 76 or 60
+local BTN_MARGIN = isMobile and 100 or 84
+
+-- ─── Paleta Dark Red ──────────────────────────────────────────
+
+local C = {
+	bg        = Color3.fromRGB(10, 10, 12),
+	bgActive  = Color3.fromRGB(18, 6, 6),
+	red       = Color3.fromRGB(220, 30, 30),
+	redBright = Color3.fromRGB(255, 60, 60),
+	redDim    = Color3.fromRGB(160, 20, 20),
+	white     = Color3.fromRGB(230, 225, 225),
+	dim       = Color3.fromRGB(130, 120, 120),
+	glow      = Color3.fromRGB(220, 30, 30),
+}
+
+-- ─── ScreenGui ────────────────────────────────────────────────
+
+local gui = Instance.new("ScreenGui")
+gui.Name           = "ShiftLockDarkRed"
+gui.ResetOnSpawn   = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+gui.DisplayOrder   = 10000
+parentUI(gui)
+
+
+
+-- ─── Botão principal ──────────────────────────────────────────
+
+local btn = Instance.new("ImageButton")
+btn.Name               = "LockBtn"
+btn.AnchorPoint        = Vector2.new(0.5, 0.5)
+btn.Size               = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+btn.Position           = UDim2.new(1, -BTN_MARGIN, 1, -BTN_MARGIN)
+btn.BackgroundColor3   = C.bg
+btn.AutoButtonColor    = false
+btn.Image              = ""
+btn.Active             = true
+btn.ZIndex             = 2
+btn.Parent             = gui
+
+local btnCorner = Instance.new("UICorner", btn)
+btnCorner.CornerRadius = UDim.new(1, 0)
+
+-- Borda vermelha neon
+local strk = Instance.new("UIStroke")
+strk.Thickness      = 1.8
+strk.Color          = C.red
+strk.Transparency   = 0.30
+strk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+strk.Parent         = btn
+
+
+
+-- Ícone central
+local icn = Instance.new("ImageLabel")
+icn.Name                 = "Icn"
+icn.BackgroundTransparency = 1
+icn.AnchorPoint          = Vector2.new(0.5, 0.5)
+icn.Position             = UDim2.fromScale(0.5, 0.5)
+icn.Size                 = UDim2.fromScale(0.56, 0.56)
+icn.Image                = "rbxasset://textures/ui/mouseLock_off.png"
+icn.ImageColor3          = C.dim
+icn.ScaleType            = Enum.ScaleType.Fit
+icn.ZIndex               = 3
+icn.Parent               = btn
+
+-- Reflexo superior (glass)
+local gloss = Instance.new("Frame")
+gloss.Size                   = UDim2.new(1, 0, 0.45, 0)
+gloss.BackgroundColor3       = Color3.new(1, 1, 1)
+gloss.BackgroundTransparency = 0.94
+gloss.BorderSizePixel        = 0
+gloss.ZIndex                 = 4
+gloss.Parent                 = btn
+Instance.new("UICorner", gloss).CornerRadius = UDim.new(1, 0)
+local glossGrad = Instance.new("UIGradient")
+glossGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0),
+	NumberSequenceKeypoint.new(1, 1),
+})
+glossGrad.Rotation = 90
+glossGrad.Parent   = gloss
+
+-- ─── Botão Fechar ─────────────────────────────────────────────
+
+local xBtn = Instance.new("TextButton")
+xBtn.Name              = "Close"
+xBtn.AnchorPoint       = Vector2.new(1, 0)
+xBtn.Position          = UDim2.new(1, 5, 0, -5)
+xBtn.Size              = UDim2.fromOffset(isMobile and 26 or 20, isMobile and 26 or 20)
+xBtn.BackgroundColor3  = Color3.fromRGB(28, 8, 8)
+xBtn.AutoButtonColor   = false
+xBtn.Text              = "×"
+xBtn.TextScaled        = true
+xBtn.TextColor3        = C.redBright
+xBtn.Font              = Enum.Font.GothamBold
+xBtn.ZIndex            = 5
+xBtn.Parent            = btn
+Instance.new("UICorner", xBtn).CornerRadius = UDim.new(1, 0)
+local xStrk = Instance.new("UIStroke")
+xStrk.Thickness   = 1.2
+xStrk.Color       = C.red
+xStrk.Transparency = 0.50
+xStrk.Parent      = xBtn
+
+-- Hover no fechar
+xBtn.MouseEnter:Connect(function()
+	Tw:Create(xBtn, TweenInfo.new(0.12), { BackgroundColor3 = C.red }):Play()
+	Tw:Create(xBtn, TweenInfo.new(0.12), { TextColor3 = Color3.new(1,1,1) }):Play()
+end)
+xBtn.MouseLeave:Connect(function()
+	Tw:Create(xBtn, TweenInfo.new(0.12), { BackgroundColor3 = Color3.fromRGB(28,8,8) }):Play()
+	Tw:Create(xBtn, TweenInfo.new(0.12), { TextColor3 = C.redBright }):Play()
+end)
+
+-- ─── Escala de entrada (pop-in) ───────────────────────────────
+
+local uiSc = Instance.new("UIScale")
+uiSc.Scale  = 0.5
+uiSc.Parent = btn
+Tw:Create(uiSc,
+	TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+	{ Scale = 1 }
+):Play()
+
+-- ─── TweenInfos reutilizáveis ─────────────────────────────────
+
+local tFast  = TweenInfo.new(0.12, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out)
+local tMed   = TweenInfo.new(0.22, Enum.EasingStyle.Sine,  Enum.EasingDirection.Out)
+local tSlow  = TweenInfo.new(1.6,  Enum.EasingStyle.Sine,  Enum.EasingDirection.InOut, -1, true)
+
+-- Animações idle
+Tw:Create(strk, tSlow, { Transparency = 0.70 }):Play()
+
+-- ─── Hover & Press ────────────────────────────────────────────
+
+local isOver    = false
+local SZ_NORMAL = UDim2.fromOffset(BTN_SIZE,     BTN_SIZE)
+local SZ_HOVER  = UDim2.fromOffset(BTN_SIZE + 7, BTN_SIZE + 7)
+local SZ_PRESS  = UDim2.fromOffset(BTN_SIZE - 7, BTN_SIZE - 7)
+
+btn.MouseEnter:Connect(function()
+	isOver = true
+	Tw:Create(btn, tFast, { Size = SZ_HOVER }):Play()
+	Tw:Create(strk, tFast, { Transparency = 0.05 }):Play()
+end)
+btn.MouseLeave:Connect(function()
+	isOver = false
+	Tw:Create(btn, tFast, { Size = SZ_NORMAL }):Play()
+	Tw:Create(strk, tFast, { Transparency = 0.30 }):Play()
+end)
+
+-- Ripple ao clicar
+local function doRipple()
+	local r = Instance.new("Frame")
+	r.AnchorPoint           = Vector2.new(0.5, 0.5)
+	r.Position              = UDim2.fromScale(0.5, 0.5)
+	r.Size                  = UDim2.fromOffset(0, 0)
+	r.BackgroundColor3      = C.redBright
+	r.BackgroundTransparency = 0.45
+	r.ZIndex                = 6
+	Instance.new("UICorner", r).CornerRadius = UDim.new(1, 0)
+	r.Parent = btn
+	local target = math.max(btn.AbsoluteSize.X, btn.AbsoluteSize.Y) * 1.4
+	Tw:Create(r, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size                  = UDim2.fromOffset(target, target),
+		BackgroundTransparency = 1,
+	}):Play()
+	task.delay(0.32, function() r:Destroy() end)
+end
+
+btn.MouseButton1Down:Connect(function()
+	Tw:Create(btn, tFast, { Size = SZ_PRESS }):Play()
+	doRipple()
+end)
+btn.MouseButton1Up:Connect(function()
+	Tw:Create(btn, tFast, { Size = isOver and SZ_HOVER or SZ_NORMAL }):Play()
+end)
+
+-- ─── Shine sweep ──────────────────────────────────────────────
+
+local function doShine()
+	local wrap = Instance.new("Frame")
+	wrap.BackgroundTransparency = 1
+	wrap.Size                   = UDim2.fromScale(1, 1)
+	wrap.ClipsDescendants       = true
+	wrap.ZIndex                 = 7
+	wrap.Parent                 = btn
+
+	local bar = Instance.new("Frame")
+	bar.AnchorPoint      = Vector2.new(0.5, 0.5)
+	bar.Position         = UDim2.fromScale(-0.2, 0.5)
+	bar.Size             = UDim2.new(0, 12, 1.5, 0)
+	bar.BackgroundColor3 = Color3.new(1, 1, 1)
+	bar.BackgroundTransparency = 0.72
+	bar.Parent           = wrap
+
+	local g = Instance.new("UIGradient")
+	g.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,   1),
+		NumberSequenceKeypoint.new(0.5, 0.2),
+		NumberSequenceKeypoint.new(1,   1),
+	})
+	g.Rotation = 20
+	g.Parent   = bar
+
+	local tw = Tw:Create(bar,
+		TweenInfo.new(0.40, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = UDim2.fromScale(1.2, 0.5) }
+	)
+	tw:Play()
+	tw.Completed:Connect(function() wrap:Destroy() end)
+end
+
+-- ─── Drag (mouse + touch) ─────────────────────────────────────
+
+local dragging = false
+local dragStart, posStart
+
+local function clampPos(pos)
+	local scr  = gui.AbsoluteSize
+	local half = btn.AbsoluteSize / 2
+	local ax = pos.X.Scale * scr.X + pos.X.Offset
+	local ay = pos.Y.Scale * scr.Y + pos.Y.Offset
+	local x  = math.clamp(ax, half.X + 8, scr.X - half.X - 8)
+	local y  = math.clamp(ay, half.Y + 8, scr.Y - half.Y - 8)
+	return UDim2.new(
+		pos.X.Scale, x - pos.X.Scale * scr.X,
+		pos.Y.Scale, y - pos.Y.Scale * scr.Y
+	)
+end
+
+btn.InputBegan:Connect(function(i)
+	local t = i.UserInputType
+	if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+		dragging  = true
+		dragStart = i.Position
+		posStart  = btn.Position
+		i.Changed:Connect(function()
+			if i.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+btn.InputChanged:Connect(function(i)
+	local t = i.UserInputType
+	if (t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch) and dragging then
+		local d  = i.Position - dragStart
+		local np = UDim2.new(
+			posStart.X.Scale, posStart.X.Offset + d.X,
+			posStart.Y.Scale, posStart.Y.Offset + d.Y
+		)
+		btn.Position = clampPos(np)
+	end
+end)
+
+-- (sem glow para sincronizar)
+
+-- ─── Toggle logic ─────────────────────────────────────────────
+
+local on     = false
+local IC_OFF = "rbxasset://textures/ui/mouseLock_off.png"
+local IC_ON  = "rbxasset://textures/ui/mouseLock_on.png"
+
+local function applyState(v)
+	local _, h, r = getParts()
+	on = v
+	lockMouse(v)
+	faceCam(h, r, v)
+
+	-- Cores conforme estado
+	local strkCol  = v and C.redBright or C.red
+	local strkTrns = v and 0.05        or 0.30
+	local strkThk  = v and 2.8         or 1.8
+	local bgCol    = v and C.bgActive  or C.bg
+	local icnCol   = v and C.redBright or C.dim
+
+	Tw:Create(strk, tMed, {
+		Color        = strkCol,
+		Thickness    = strkThk,
+		Transparency = strkTrns,
+	}):Play()
+	Tw:Create(btn,  tMed, { BackgroundColor3 = bgCol }):Play()
+	Tw:Create(icn,  tMed, { ImageColor3      = icnCol }):Play()
+
+	-- Troca de ícone com rotação
+	Tw:Create(icn, TweenInfo.new(0.10, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+		Rotation = v and 20 or -20,
+	}):Play()
+	task.delay(0.11, function()
+		icn.Image    = v and IC_ON or IC_OFF
+		icn.Rotation = v and -20 or 20
+		Tw:Create(icn, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Rotation = 0,
+		}):Play()
+	end)
+
+	doShine()
+end
+
+btn.Activated:Connect(function()
+	applyState(not on)
+end)
+
+-- Fechar GUI
+xBtn.Activated:Connect(function()
+	if on then applyState(false) end
+	-- Animação de saída
+	Tw:Create(uiSc, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+		{ Scale = 0.6 }):Play()
+	Tw:Create(btn, TweenInfo.new(0.18),
+		{ BackgroundTransparency = 1 }):Play()
+	Tw:Create(strk, TweenInfo.new(0.14),
+		{ Transparency = 1 }):Play()
+	task.delay(0.22, function() gui:Destroy() end)
+end)
+
+-- ─── Re-apply após respawn / troca de câmera ──────────────────
+
+plr.CharacterAdded:Connect(function()
+	reapply(on)
+end)
+
+local lastCam = Wk.CurrentCamera
+Wk:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	local c = Wk.CurrentCamera
+	if c ~= lastCam then
+		lastCam = c
+		reapply(on)
+	end
+end)
