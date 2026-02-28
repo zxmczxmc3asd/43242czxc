@@ -1,0 +1,627 @@
+-- ═══════════════════════════════════════════════════════════
+--               STATS GUI MODULE — v2.0 (Modern)
+--          Visual upgrade + Player Status Integration
+-- ═══════════════════════════════════════════════════════════
+-- Uso:
+--   local Stats = loadstring(game:HttpGet(URL))()
+--   Stats:Show()
+--   Stats:Reset()
+--   Stats:Hide()
+-- ═══════════════════════════════════════════════════════════
+
+local Players         = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService      = game:GetService("RunService")
+local CoreGui         = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+
+-- ── Fallbacks globais ────────────────────────────────────────
+local Notify = rawget(_G, "Notify") or function(_) end
+local FormatNumber = rawget(_G, "FormatNumber") or function(n)
+	n = tonumber(n) or 0
+	if n >= 1e9 then return string.format("%.2fB", n/1e9)
+	elseif n >= 1e6 then return string.format("%.2fM", n/1e6)
+	elseif n >= 1e3 then return string.format("%.2fK", n/1e3)
+	else
+		local s = tostring(math.floor(n))
+		local left, num, right = s:match("^([^%d]*)(%d+)(.-)$")
+		num = num:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+		return left .. num .. right
+	end
+end
+
+-- ── PALETTE ──────────────────────────────────────────────────
+local RED       = Color3.fromRGB(210, 30,  30)
+local RED_DARK  = Color3.fromRGB(110, 15,  15)
+local RED_DIM   = Color3.fromRGB(50,  10,  10)
+local RED_GLOW  = Color3.fromRGB(255, 70,  70)
+local BG        = Color3.fromRGB(8,   8,   10)
+local SURFACE   = Color3.fromRGB(14,  14,  18)
+local CARD      = Color3.fromRGB(20,  20,  25)
+local CARD2     = Color3.fromRGB(16,  16,  20)
+local WHITE     = Color3.fromRGB(255, 255, 255)
+local GRAY      = Color3.fromRGB(130, 130, 145)
+local DIMGRAY   = Color3.fromRGB(75,  75,  90)
+local BORDER    = Color3.fromRGB(36,  36,  46)
+local GREEN     = Color3.fromRGB(50,  210, 95)
+local AMBER     = Color3.fromRGB(255, 185, 35)
+
+-- ── MODULE ───────────────────────────────────────────────────
+local StatsGUI = {}
+StatsGUI.__index = StatsGUI
+local self = setmetatable({}, StatsGUI)
+
+self.sessionData = { startTime = os.time(), stats = {} }
+self.statsGui = nil
+self.statsUpdateConnection = nil
+self.behaviorConnection = nil
+self.statsActive = false
+self.isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- ── BEHAVIOR TRACKING (importado do Stalker GUI) ─────────────
+self.behaviorTracker = {
+	lastPosition   = nil,
+	lastMoveTime   = tick(),
+	lastUpdateTime = tick(),
+	afkTime        = 0,
+	trainingTime   = 0,
+	idleTime       = 0,
+	deathCount     = 0,
+	jumpCount      = 0,
+	lastJumpTime   = 0,
+	isJumping      = false,
+	isDead         = false,
+	startTime      = tick(),
+}
+
+local function initBehaviorTracker(self)
+	local bt = self.behaviorTracker
+	bt.lastPosition   = nil
+	bt.lastMoveTime   = tick()
+	bt.lastUpdateTime = tick()
+	bt.afkTime        = 0
+	bt.trainingTime   = 0
+	bt.idleTime       = 0
+	bt.deathCount     = 0
+	bt.jumpCount      = 0
+	bt.lastJumpTime   = 0
+	bt.isJumping      = false
+	bt.isDead         = false
+	bt.startTime      = tick()
+end
+
+local function updateBehavior(self)
+	local bt   = self.behaviorTracker
+	local char = player.Character
+	if not char then return end
+	local hum  = char:FindFirstChild("Humanoid")
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not (hum and root) then return end
+
+	local pos = root.Position
+	local now = tick()
+	local dt  = now - bt.lastUpdateTime
+	bt.lastUpdateTime = now
+
+	if bt.lastPosition then
+		if (pos - bt.lastPosition).Magnitude > 0.5 then
+			bt.lastMoveTime = now
+			bt.afkTime = 0
+		else
+			bt.afkTime = now - bt.lastMoveTime
+			bt.idleTime = bt.idleTime + dt
+		end
+	end
+	bt.lastPosition = pos
+
+	local m = player:FindFirstChild("machineInUse")
+	if m and m.Value then bt.trainingTime = bt.trainingTime + dt end
+
+	if hum:GetState() == Enum.HumanoidStateType.Jumping then
+		if not bt.isJumping then
+			bt.isJumping   = true
+			bt.jumpCount   = bt.jumpCount + 1
+			bt.lastJumpTime = now
+		end
+	else
+		bt.isJumping = false
+	end
+
+	if hum.Health <= 0 and not bt.isDead then
+		bt.deathCount = bt.deathCount + 1
+		bt.isDead = true
+	elseif hum.Health > 0 then
+		bt.isDead = false
+	end
+end
+
+-- ── HELPERS ──────────────────────────────────────────────────
+function self:getStats()
+	local ls = player:FindFirstChild("leaderstats")
+	if not ls then return nil end
+	return {
+		Kills      = ls:FindFirstChild("Kills"),
+		Strength   = ls:FindFirstChild("Strength"),
+		Rebirths   = ls:FindFirstChild("Rebirths"),
+		Brawls     = ls:FindFirstChild("Brawls"),
+		Durability = player:FindFirstChild("Durability"),
+		Agility    = player:FindFirstChild("Agility"),
+		Gems       = player:FindFirstChild("Gems"),
+		Tokens     = player:FindFirstChild("Tokens"),
+	}
+end
+
+function self:getHealth()
+	local char = player.Character
+	if not char then return "N/A", 0, 100 end
+	local h = char:FindFirstChild("Humanoid")
+	if h then return string.format("%.0f / %.0f", h.Health, h.MaxHealth), h.Health, h.MaxHealth end
+	return "N/A", 0, 100
+end
+
+function self:getPVal(name)
+	local v = player:FindFirstChild(name)
+	if not v then return "N/A" end
+	if v:IsA("BoolValue") then return v.Value and "Yes" or "No"
+	elseif v:IsA("StringValue") then return v.Value ~= "" and v.Value or "None"
+	elseif v:IsA("IntValue") or v:IsA("NumberValue") then return FormatNumber(v.Value) end
+	return "N/A"
+end
+
+function self:startSession()
+	local stats = self:getStats()
+	if not stats or not stats.Kills or not stats.Strength or not stats.Durability then return false end
+	self.sessionData.startTime = os.time()
+	self.sessionData.stats = {
+		Kills      = stats.Kills.Value,
+		Strength   = stats.Strength.Value,
+		Durability = stats.Durability.Value,
+		Brawls     = stats.Brawls    and stats.Brawls.Value    or 0,
+		Rebirths   = stats.Rebirths  and stats.Rebirths.Value  or 0,
+		Agility    = stats.Agility   and stats.Agility.Value   or 0,
+		Gems       = stats.Gems      and stats.Gems.Value      or 0,
+		Tokens     = stats.Tokens    and stats.Tokens.Value    or 0,
+	}
+	initBehaviorTracker(self)
+	return true
+end
+
+function self:getElapsed()
+	local t = os.time() - self.sessionData.startTime
+	return { raw = t, h = math.floor(t/3600), m = math.floor((t%3600)/60), s = t%60 }
+end
+
+-- ── DRAG ─────────────────────────────────────────────────────
+local function makeDraggable(frame)
+	local drag, ds, sp
+	frame.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			drag = true; ds = i.Position; sp = frame.Position
+			i.Changed:Connect(function()
+				if i.UserInputState == Enum.UserInputState.End then drag = false end
+			end)
+		end
+	end)
+	frame.InputChanged:Connect(function(i)
+		if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - ds
+			frame.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+		end
+	end)
+end
+
+-- ── UI FACTORY HELPERS ────────────────────────────────────────
+local function corner(p, r)
+	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 8); c.Parent = p
+end
+local function stroke(p, col, thick, trans)
+	local s = Instance.new("UIStroke")
+	s.Color = col or BORDER; s.Thickness = thick or 1; s.Transparency = trans or 0
+	s.Parent = p; return s
+end
+local function lbl(p, txt, col, font, sz, size, pos, zi, align)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1; l.BorderSizePixel = 0
+	l.Text = txt; l.TextColor3 = col or WHITE
+	l.Font = font or Enum.Font.GothamMedium; l.TextSize = sz or 13
+	l.Size = size or UDim2.new(1,0,0,20); l.Position = pos or UDim2.new(0,0,0,0)
+	l.ZIndex = zi or 5; l.TextXAlignment = align or Enum.TextXAlignment.Left
+	l.TextWrapped = true; l.Parent = p; return l
+end
+
+-- ── HIDE / RESET ──────────────────────────────────────────────
+function self:Hide()
+	self.statsActive = false
+	if self.statsUpdateConnection then self.statsUpdateConnection:Disconnect(); self.statsUpdateConnection = nil end
+	if self.behaviorConnection     then self.behaviorConnection:Disconnect();     self.behaviorConnection = nil end
+	if self.statsGui then self.statsGui:Destroy(); self.statsGui = nil end
+end
+
+function self:Reset()
+	local ok = self:startSession()
+	Notify({ Title = "🔄 Session Reset", Content = ok and "Nova sessão iniciada." or "Stats não encontradas ainda.", Duration = 2 })
+	return ok
+end
+
+-- ═══════════════════════════════════════════════════════════
+--                         SHOW
+-- ═══════════════════════════════════════════════════════════
+function self:Show()
+	if not self:startSession() then
+		task.spawn(function()
+			for _ = 1, 80 do
+				if self:startSession() then break end
+				task.wait(0.25)
+			end
+		end)
+	end
+
+	self:Hide()
+	self.statsActive = true
+
+	local isMobile = self.isMobile
+	local VP = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+
+	local W = isMobile and math.clamp(VP.X * 0.92, 280, 340) or 380
+	local H = isMobile and math.clamp(VP.Y * 0.74, 400, 520) or 680
+
+	-- ── SCREEN GUI ───────────────────────────────────────────
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "StatsGui"; screenGui.ResetOnSpawn = false
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	screenGui.IgnoreGuiInset = true; screenGui.Parent = CoreGui
+	self.statsGui = screenGui
+
+	-- Dark overlay
+	local overlay = Instance.new("Frame")
+	overlay.Size = UDim2.new(1,0,1,0); overlay.BackgroundColor3 = Color3.new(0,0,0)
+	overlay.BackgroundTransparency = 0.6; overlay.BorderSizePixel = 0
+	overlay.Active = false; overlay.ZIndex = 1; overlay.Parent = screenGui
+
+	-- Main window
+	local win = Instance.new("Frame")
+	win.Size = UDim2.new(0,W,0,H)
+	win.Position = UDim2.new(0.5,0,0.5,0)
+	win.AnchorPoint = Vector2.new(0.5,0.5)
+	win.BackgroundColor3 = BG; win.BorderSizePixel = 0
+	win.ZIndex = 10; win.Active = true; win.Parent = screenGui
+	corner(win, 14); stroke(win, RED, 1.5, 0.35); makeDraggable(win)
+
+	-- ── HEADER ───────────────────────────────────────────────
+	local HDR_H = isMobile and 60 or 90
+
+	local hdr = Instance.new("Frame")
+	hdr.Size = UDim2.new(1,0,0,HDR_H); hdr.BackgroundColor3 = SURFACE
+	hdr.BorderSizePixel = 0; hdr.ZIndex = 11; hdr.Parent = win
+	corner(hdr, 14)
+
+	-- patch para remover corner na parte inferior do header
+	local hpatch = Instance.new("Frame")
+	hpatch.Size = UDim2.new(1,0,0,14); hpatch.Position = UDim2.new(0,0,1,-14)
+	hpatch.BackgroundColor3 = SURFACE; hpatch.BorderSizePixel = 0; hpatch.ZIndex = 11; hpatch.Parent = hdr
+
+	-- Red top stripe
+	local ts = Instance.new("Frame"); ts.Size = UDim2.new(1,0,0,3)
+	ts.BackgroundColor3 = RED; ts.BorderSizePixel = 0; ts.ZIndex = 12; ts.Parent = hdr; corner(ts,14)
+
+	-- Bottom divider
+	local hl = Instance.new("Frame"); hl.Size = UDim2.new(1,0,0,1); hl.Position = UDim2.new(0,0,1,-1)
+	hl.BackgroundColor3 = RED_DARK; hl.BorderSizePixel = 0; hl.ZIndex = 11; hl.Parent = hdr
+
+	-- Avatar
+	local AV = isMobile and 36 or 52
+	local avatar = Instance.new("ImageLabel")
+	avatar.Size = UDim2.new(0,AV,0,AV); avatar.Position = UDim2.new(0,12,0.5,-(AV/2))
+	avatar.BackgroundColor3 = RED_DIM; avatar.BorderSizePixel = 0; avatar.ZIndex = 12; avatar.Parent = hdr
+	corner(avatar, AV/2); stroke(avatar, RED, 2, 0.3)
+	pcall(function()
+		avatar.Image = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+	end)
+
+	local TX = AV + 22
+	lbl(hdr, "📊 Session Statistics", WHITE, Enum.Font.GothamBold, isMobile and 14 or 17,
+		UDim2.new(1,-(TX+46),0,isMobile and 18 or 26), UDim2.new(0,TX,0,isMobile and 10 or 16), 12)
+
+	local timerLabel = lbl(hdr, "⏱️ 00:00:00", GRAY, Enum.Font.GothamMedium, isMobile and 10 or 12,
+		UDim2.new(1,-(TX+46),0,16), UDim2.new(0,TX,0,isMobile and 32 or 48), 12)
+
+	-- Close button
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.new(0,26,0,26)
+	closeBtn.Position = UDim2.new(1,-36,0,isMobile and 10 or 18)
+	closeBtn.BackgroundColor3 = RED_DIM; closeBtn.Text = "X"
+	closeBtn.TextColor3 = RED_GLOW; closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextSize = 13; closeBtn.BorderSizePixel = 0; closeBtn.ZIndex = 13; closeBtn.Parent = hdr
+	corner(closeBtn, 6); stroke(closeBtn, RED, 1, 0.4)
+	closeBtn.MouseButton1Click:Connect(function() self:Hide() end)
+
+	-- ── HEALTH BAR (Destaque visual) ─────────────────────────
+	local HB_H = isMobile and 28 or 34
+	local hbFrame = Instance.new("Frame")
+	hbFrame.Size = UDim2.new(1,-16,0,HB_H)
+	hbFrame.Position = UDim2.new(0,8,0,HDR_H+4)
+	hbFrame.BackgroundColor3 = CARD; hbFrame.BorderSizePixel = 0; hbFrame.ZIndex = 11; hbFrame.Parent = win
+	corner(hbFrame, 8); stroke(hbFrame, BORDER, 1, 0)
+
+	local hbIcon = lbl(hbFrame, "❤️", WHITE, Enum.Font.GothamBold, isMobile and 12 or 14,
+		UDim2.new(0,28,1,0), UDim2.new(0,4,0,0), 12, Enum.TextXAlignment.Center)
+
+	local hbBg = Instance.new("Frame")
+	hbBg.Size = UDim2.new(1,-70,0,8); hbBg.Position = UDim2.new(0,36,0.5,-4)
+	hbBg.BackgroundColor3 = Color3.fromRGB(30,30,35); hbBg.BorderSizePixel=0; hbBg.ZIndex=12; hbBg.Parent=hbFrame
+	corner(hbBg, 4)
+
+	local hbFill = Instance.new("Frame")
+	hbFill.Size = UDim2.new(1,0,1,0); hbFill.BackgroundColor3 = Color3.fromRGB(200,40,40)
+	hbFill.BorderSizePixel=0; hbFill.ZIndex=13; hbFill.Parent=hbBg
+	corner(hbFill, 4)
+
+	local hbText = lbl(hbFrame, "—", GRAY, Enum.Font.Gotham, isMobile and 9 or 11,
+		UDim2.new(0,70,1,0), UDim2.new(1,-72,0,0), 12, Enum.TextXAlignment.Right)
+
+	-- ── SCROLL ───────────────────────────────────────────────
+	local FOOTER_H = isMobile and 50 or 58
+	local SCROLL_TOP = HDR_H + HB_H + 10
+
+	local scr = Instance.new("ScrollingFrame")
+	scr.Size = UDim2.new(1,-14,1,-(SCROLL_TOP+FOOTER_H+10))
+	scr.Position = UDim2.new(0,7,0,SCROLL_TOP)
+	scr.BackgroundTransparency = 1; scr.BorderSizePixel = 0
+	scr.ScrollBarThickness = 3; scr.ScrollBarImageColor3 = RED
+	scr.CanvasSize = UDim2.new(0,0,0,0); scr.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scr.ClipsDescendants = true; scr.ZIndex = 10; scr.Parent = win
+
+	local scrList = Instance.new("UIListLayout")
+	scrList.Padding = UDim.new(0, isMobile and 4 or 5)
+	scrList.SortOrder = Enum.SortOrder.LayoutOrder
+	scrList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	scrList.Parent = scr
+
+	local scrPad = Instance.new("UIPadding")
+	scrPad.PaddingTop = UDim.new(0,6); scrPad.PaddingBottom = UDim.new(0,6)
+	scrPad.Parent = scr
+
+	-- ── SECTION / CARD BUILDERS ──────────────────────────────
+	local layoutOrder = 0
+	local function nextOrder() layoutOrder = layoutOrder + 1; return layoutOrder end
+
+	local function makeSection(title)
+		local f = Instance.new("Frame")
+		f.Size = UDim2.new(1,0,0,isMobile and 18 or 22)
+		f.BackgroundTransparency = 1; f.LayoutOrder = nextOrder(); f.ZIndex = 11; f.Parent = scr
+
+		local ll = Instance.new("Frame"); ll.Size = UDim2.new(0.12,0,0,1)
+		ll.Position = UDim2.new(0,0,0.5,0); ll.BackgroundColor3 = RED_DARK; ll.BorderSizePixel=0; ll.ZIndex=12; ll.Parent=f
+		local lr = Instance.new("Frame"); lr.Size = UDim2.new(0.12,0,0,1)
+		lr.Position = UDim2.new(0.88,0,0.5,0); lr.BackgroundColor3 = RED_DARK; lr.BorderSizePixel=0; lr.ZIndex=12; lr.Parent=f
+
+		lbl(f, title, RED, Enum.Font.GothamBold, isMobile and 9 or 10,
+			UDim2.new(0.76,0,1,0), UDim2.new(0.12,0,0,0), 12, Enum.TextXAlignment.Center)
+	end
+
+	local CARD_H  = isMobile and 50 or 60
+	local ICON_SZ = isMobile and 28 or 36
+	local LBL_TS  = isMobile and 9  or 11
+	local VAL_TS  = isMobile and 13 or 16
+	local LBL_H   = isMobile and 13 or 17
+	local VAL_H   = isMobile and 18 or 24
+
+	-- Card padrão: ícone + label + valor atual
+	local function makeCard(icon, labelTxt, initVal, accent)
+		local card = Instance.new("Frame")
+		card.Size = UDim2.new(1,0,0,CARD_H); card.BackgroundColor3 = CARD2
+		card.BorderSizePixel = 0; card.LayoutOrder = nextOrder(); card.ZIndex = 11; card.Parent = scr
+		corner(card, 8); stroke(card, BORDER, 1, 0)
+
+		local bar = Instance.new("Frame"); bar.Size = UDim2.new(0,3,1,0)
+		bar.BackgroundColor3 = accent or RED; bar.BorderSizePixel=0; bar.ZIndex=12; bar.Parent=card; corner(bar,2)
+
+		local iconBg = Instance.new("Frame")
+		iconBg.Size = UDim2.new(0,ICON_SZ,0,ICON_SZ)
+		iconBg.Position = UDim2.new(0,10,0.5,-(ICON_SZ/2))
+		iconBg.BackgroundColor3 = CARD; iconBg.BorderSizePixel=0; iconBg.ZIndex=12; iconBg.Parent=card
+		corner(iconBg,6); stroke(iconBg,BORDER,1,0.4)
+		lbl(iconBg, icon, WHITE, Enum.Font.GothamBold, isMobile and 14 or 17,
+			UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), 13, Enum.TextXAlignment.Center)
+
+		local OX = 10 + ICON_SZ + 10
+		local innerW = -(OX + 8)
+		local topY = math.floor((CARD_H - LBL_H - VAL_H - 2) / 2)
+
+		lbl(card, labelTxt, DIMGRAY, Enum.Font.GothamMedium, LBL_TS,
+			UDim2.new(1,innerW,0,LBL_H), UDim2.new(0,OX,0,topY), 12)
+
+		local valLabel = lbl(card, initVal, accent or WHITE, Enum.Font.GothamBold, VAL_TS,
+			UDim2.new(1,innerW,0,VAL_H), UDim2.new(0,OX,0,topY+LBL_H+2), 12)
+
+		return valLabel
+	end
+
+	-- Card duplo: valor atual + ganho na sessão
+	local DCARD_H = isMobile and 60 or 72
+	local function makeStatCard(icon, labelTxt, accent)
+		local card = Instance.new("Frame")
+		card.Size = UDim2.new(1,0,0,DCARD_H); card.BackgroundColor3 = CARD2
+		card.BorderSizePixel = 0; card.LayoutOrder = nextOrder(); card.ZIndex = 11; card.Parent = scr
+		corner(card, 8); stroke(card, BORDER, 1, 0)
+
+		local bar = Instance.new("Frame"); bar.Size = UDim2.new(0,3,1,0)
+		bar.BackgroundColor3 = accent or RED; bar.BorderSizePixel=0; bar.ZIndex=12; bar.Parent=card; corner(bar,2)
+
+		local iconBg = Instance.new("Frame")
+		iconBg.Size = UDim2.new(0,ICON_SZ,0,ICON_SZ)
+		iconBg.Position = UDim2.new(0,10,0.5,-(ICON_SZ/2))
+		iconBg.BackgroundColor3 = CARD; iconBg.BorderSizePixel=0; iconBg.ZIndex=12; iconBg.Parent=card
+		corner(iconBg,6); stroke(iconBg,BORDER,1,0.4)
+		lbl(iconBg, icon, WHITE, Enum.Font.GothamBold, isMobile and 14 or 17,
+			UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), 13, Enum.TextXAlignment.Center)
+
+		local OX = 10 + ICON_SZ + 10
+		local innerW = -(OX + 8)
+
+		lbl(card, labelTxt, DIMGRAY, Enum.Font.GothamMedium, LBL_TS,
+			UDim2.new(1,innerW,0,LBL_H), UDim2.new(0,OX,0,isMobile and 4 or 6), 12)
+
+		local curLabel = lbl(card, "0", accent or WHITE, Enum.Font.GothamBold, VAL_TS,
+			UDim2.new(0.5,0,0,VAL_H), UDim2.new(0,OX,0,isMobile and 16 or 22), 12)
+
+		-- Gain label à direita
+		local gainLabel = lbl(card, "+0", GREEN, Enum.Font.GothamBold, LBL_TS,
+			UDim2.new(0.5,-10,0,VAL_H), UDim2.new(0.5,OX//2,0,isMobile and 16 or 22), 12)
+		gainLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+		return curLabel, gainLabel
+	end
+
+	-- ── STATUS (live player) ─────────────────────────────────
+	makeSection("◈  LIVE STATUS")
+	local deathLabel    = makeCard("💀", "Deaths this Session",  "0",      Color3.fromRGB(220,60,60))
+	local jumpLabel     = makeCard("🦘", "Jump Count",           "0",      Color3.fromRGB(200,180,100))
+	local jumpSpamLabel = makeCard("⚠️", "Jump Spam",            "Normal", AMBER)
+	local afkLabel      = makeCard("💤", "AFK Time",             "0s",     DIMGRAY)
+	local machineLabel  = makeCard("🏋️", "Machine",              "N/A",    Color3.fromRGB(180,140,220))
+	local mapLabel      = makeCard("🗺️", "Current Map",          "N/A",    Color3.fromRGB(150,220,180))
+
+	-- ── SESSION STATS ────────────────────────────────────────
+	makeSection("◈  SESSION — COMBAT")
+	local killsCur,    killsGainLbl    = makeStatCard("💀", "Kills",      Color3.fromRGB(220,60,60))
+	local strengthCur, strengthGainLbl = makeStatCard("💪", "Strength",   Color3.fromRGB(180,200,150))
+	local durabCur,    durabGainLbl    = makeStatCard("🛡️", "Durability", Color3.fromRGB(150,180,200))
+
+	makeSection("◈  SESSION — PROGRESS")
+	local rebirthsCur, rebirthsGainLbl = makeStatCard("✨", "Rebirths", Color3.fromRGB(180,220,220))
+	local brawlsCur,   brawlsGainLbl   = makeStatCard("👊", "Brawls",   Color3.fromRGB(220,140,80))
+	local agilityCur,  agilityGainLbl  = makeStatCard("⚡", "Agility",  Color3.fromRGB(220,220,120))
+
+	makeSection("◈  SESSION — RESOURCES")
+	local gemsCur,   gemsGainLbl   = makeStatCard("💎", "Gems",   Color3.fromRGB(150,200,220))
+	local tokensCur, tokensGainLbl = makeStatCard("🎫", "Tokens", Color3.fromRGB(220,200,100))
+
+	makeSection("◈  EFFICIENCY  (por hora)")
+	local kphLabel = makeCard("⚔️", "Kills / Hour",    "—", Color3.fromRGB(255,100,100))
+	local sphLabel = makeCard("💪", "Strength / Hour", "—", Color3.fromRGB(100,220,100))
+
+	-- ── FOOTER ───────────────────────────────────────────────
+	local footer = Instance.new("Frame")
+	footer.Size = UDim2.new(1,-14,0,FOOTER_H)
+	footer.Position = UDim2.new(0,7,1,-(FOOTER_H+5))
+	footer.BackgroundColor3 = CARD; footer.BorderSizePixel=0; footer.ZIndex=11; footer.Parent=win
+	corner(footer,10); stroke(footer,BORDER,1,0)
+
+	local BTN_H = isMobile and 36 or 42
+	local BTN_Y = math.floor((FOOTER_H - BTN_H) / 2)
+
+	local resetBtn = Instance.new("TextButton")
+	resetBtn.Size = UDim2.new(1,-16,0,BTN_H); resetBtn.Position = UDim2.new(0,8,0,BTN_Y)
+	resetBtn.BackgroundColor3 = RED_DARK; resetBtn.Text = "🔄  Reset Session"
+	resetBtn.TextColor3 = WHITE; resetBtn.Font = Enum.Font.GothamBold
+	resetBtn.TextSize = isMobile and 12 or 13; resetBtn.BorderSizePixel=0; resetBtn.ZIndex=12; resetBtn.Parent=footer
+	corner(resetBtn, 8); stroke(resetBtn, RED, 1.5, 0.3)
+
+	resetBtn.MouseEnter:Connect(function() resetBtn.BackgroundColor3 = RED end)
+	resetBtn.MouseLeave:Connect(function() resetBtn.BackgroundColor3 = RED_DARK end)
+	resetBtn.MouseButton1Click:Connect(function() self:Reset() end)
+
+	-- ── BEHAVIOR LOOP (rápido) ───────────────────────────────
+	local lastBehaviorUpdate = 0
+	self.behaviorConnection = RunService.Heartbeat:Connect(function()
+		if not self.statsActive then return end
+		local now = tick()
+		if now - lastBehaviorUpdate < 0.1 then return end
+		lastBehaviorUpdate = now
+		updateBehavior(self)
+	end)
+
+	-- ── UPDATE LOOP ──────────────────────────────────────────
+	local lastUpdate = 0
+	self.statsUpdateConnection = RunService.Heartbeat:Connect(function()
+		if not self.statsActive then return end
+		local now = tick()
+		if now - lastUpdate < 0.5 then return end
+		lastUpdate = now
+
+		local stats = self:getStats()
+		if not stats or not stats.Kills or not stats.Strength or not stats.Durability then return end
+
+		local elapsed = self:getElapsed()
+		timerLabel.Text = string.format("⏱️  %02d:%02d:%02d", elapsed.h, elapsed.m, elapsed.s)
+
+		-- Health bar
+		local hStr, hCur, hMax = self:getHealth()
+		hbText.Text = hStr
+		local pct = math.clamp(hCur / math.max(hMax, 1), 0, 1)
+		hbFill.Size = UDim2.new(pct, 0, 1, 0)
+		local r = math.floor(200 * (1 - pct) + 40 * pct)
+		local g = math.floor(40  * (1 - pct) + 200 * pct)
+		hbFill.BackgroundColor3 = Color3.fromRGB(r, g, 60)
+
+		-- Valores atuais
+		local kills      = stats.Kills.Value
+		local strength   = stats.Strength.Value
+		local durability = stats.Durability.Value
+		local rebirths   = stats.Rebirths  and stats.Rebirths.Value  or 0
+		local brawls     = stats.Brawls    and stats.Brawls.Value    or 0
+		local agility    = stats.Agility   and stats.Agility.Value   or 0
+		local gems       = stats.Gems      and stats.Gems.Value      or 0
+		local tokens     = stats.Tokens    and stats.Tokens.Value    or 0
+
+		local base = self.sessionData.stats
+		local killsGain    = kills      - (base.Kills      or 0)
+		local strengthGain = strength   - (base.Strength   or 0)
+		local durabGain    = durability - (base.Durability or 0)
+		local rebirthsGain = rebirths   - (base.Rebirths   or 0)
+		local brawlsGain   = brawls     - (base.Brawls     or 0)
+		local agilityGain  = agility    - (base.Agility    or 0)
+		local gemsGain     = gems       - (base.Gems       or 0)
+		local tokensGain   = tokens     - (base.Tokens     or 0)
+
+		-- Session stat cards
+		killsCur.Text    = FormatNumber(kills)    ; killsGainLbl.Text    = "+"..FormatNumber(killsGain)
+		strengthCur.Text = FormatNumber(strength)  ; strengthGainLbl.Text = "+"..FormatNumber(strengthGain)
+		durabCur.Text    = FormatNumber(durability); durabGainLbl.Text    = "+"..FormatNumber(durabGain)
+		rebirthsCur.Text = FormatNumber(rebirths)  ; rebirthsGainLbl.Text = "+"..FormatNumber(rebirthsGain)
+		brawlsCur.Text   = FormatNumber(brawls)    ; brawlsGainLbl.Text   = "+"..FormatNumber(brawlsGain)
+		agilityCur.Text  = FormatNumber(agility)   ; agilityGainLbl.Text  = "+"..FormatNumber(agilityGain)
+		gemsCur.Text     = FormatNumber(gems)      ; gemsGainLbl.Text     = "+"..FormatNumber(gemsGain)
+		tokensCur.Text   = FormatNumber(tokens)    ; tokensGainLbl.Text   = "+"..FormatNumber(tokensGain)
+
+		-- Efficiency
+		local hours = elapsed.raw / 3600
+		if hours > 0 then
+			kphLabel.Text = FormatNumber(math.floor(killsGain    / hours))
+			sphLabel.Text = FormatNumber(math.floor(strengthGain / hours))
+		end
+
+		-- Live status (behavior)
+		local bt = self.behaviorTracker
+		deathLabel.Text = tostring(bt.deathCount)
+		jumpLabel.Text  = tostring(bt.jumpCount)
+
+		local sessionTime = now - bt.startTime
+		local jpm = sessionTime > 0 and (bt.jumpCount / sessionTime) * 60 or 0
+		if jpm > 10 then
+			jumpSpamLabel.Text = "SIM — Suspeito ⚠️"
+			jumpSpamLabel.TextColor3 = Color3.fromRGB(255,60,60)
+		else
+			jumpSpamLabel.Text = "Normal"
+			jumpSpamLabel.TextColor3 = GREEN
+		end
+
+		local afkSec = math.floor(bt.afkTime)
+		if afkSec >= 3600 then
+			afkLabel.Text = string.format("%dh %dm", math.floor(afkSec/3600), math.floor((afkSec%3600)/60))
+		elseif afkSec >= 60 then
+			afkLabel.Text = string.format("%dm %ds", math.floor(afkSec/60), afkSec%60)
+		else
+			afkLabel.Text = afkSec .. "s"
+		end
+
+		machineLabel.Text = self:getPVal("machineInUse")
+		mapLabel.Text     = self:getPVal("currentMap")
+	end)
+
+	return true
+end
+
+return self
