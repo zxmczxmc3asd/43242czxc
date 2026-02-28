@@ -1,0 +1,372 @@
+-- ╔══════════════════════════════════════╗
+-- ║       ANTI-AFK STATUS WIDGET         ║
+-- ║   Drop this inside seu Callback      ║
+-- ║   ✅ Draggable  ✅ Mobile-ready      ║
+-- ╚══════════════════════════════════════╝
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local Stats            = game:GetService("Stats")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ══════════════════════════════════════
+--  HELPERS
+-- ══════════════════════════════════════
+
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local SCALE    = isMobile and 1.45 or 1.0
+local function s(n) return math.floor(n * SCALE) end
+
+-- ══════════════════════════════════════
+--  DRAGGABLE
+-- ══════════════════════════════════════
+
+local function MakeDraggable(frame, handle)
+    handle = handle or frame
+
+    local dragging  = false
+    local dragStart = nil
+    local startPos  = nil
+
+    local function clamp()
+        local vp  = workspace.CurrentCamera.ViewportSize
+        local abs = frame.AbsoluteSize
+        local pos = frame.Position
+        local x   = pos.X.Scale * vp.X + pos.X.Offset
+        local y   = pos.Y.Scale * vp.Y + pos.Y.Offset
+        x = math.clamp(x, 0, vp.X - abs.X)
+        y = math.clamp(y, 0, vp.Y - abs.Y)
+        frame.Position = UDim2.new(0, x, 0, y)
+    end
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            dragStart = input.Position
+            local vp  = workspace.CurrentCamera.ViewportSize
+            local p   = frame.Position
+            startPos  = UDim2.new(0, p.X.Scale * vp.X + p.X.Offset,
+                                  0, p.Y.Scale * vp.Y + p.Y.Offset)
+        end
+    end)
+
+    local function onMove(input)
+        if dragging and (
+            input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch
+        ) then
+            local d = input.Position - dragStart
+            frame.Position = UDim2.new(0, startPos.X.Offset + d.X,
+                                       0, startPos.Y.Offset + d.Y)
+            clamp()
+        end
+    end
+
+    local function onEnd(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end
+
+    handle.InputChanged:Connect(onMove)
+    handle.InputEnded:Connect(onEnd)
+    UserInputService.InputChanged:Connect(onMove)
+    UserInputService.InputEnded:Connect(onEnd)
+end
+
+-- ══════════════════════════════════════
+--  BUILD WIDGET
+-- ══════════════════════════════════════
+
+local function CreateAFKWidget()
+    if PlayerGui:FindFirstChild("AntiAFKWidget") then
+        PlayerGui.AntiAFKWidget:Destroy()
+    end
+
+    local W = s(160)
+    local H = s(110)
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name            = "AntiAFKWidget"
+    ScreenGui.ResetOnSpawn    = false
+    ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
+    ScreenGui.DisplayOrder    = 999
+    ScreenGui.IgnoreGuiInset  = true
+    ScreenGui.Parent          = PlayerGui
+
+    local Frame = Instance.new("Frame")
+    Frame.Name                   = "Container"
+    Frame.Size                   = UDim2.new(0, W, 0, H)
+    Frame.Position               = UDim2.new(1, W + 20, 0, s(20))
+    Frame.BackgroundColor3       = Color3.fromRGB(10, 10, 10)
+    Frame.BackgroundTransparency = 0.08
+    Frame.BorderSizePixel        = 0
+    Frame.Active                 = true
+    Frame.Parent                 = ScreenGui
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, s(10))
+
+    local TopBar = Instance.new("Frame")
+    TopBar.Size             = UDim2.new(1, 0, 0, s(4))
+    TopBar.BackgroundColor3 = Color3.fromRGB(220, 30, 30)
+    TopBar.BorderSizePixel  = 0
+    TopBar.ZIndex           = 2
+    TopBar.Active           = true
+    TopBar.Parent           = Frame
+    Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, s(10))
+
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color        = Color3.fromRGB(220, 30, 30)
+    Stroke.Transparency = 0.6
+    Stroke.Thickness    = 1.2
+    Stroke.Parent       = Frame
+
+    local IconLabel = Instance.new("TextLabel")
+    IconLabel.Size               = UDim2.new(0, s(28), 0, s(28))
+    IconLabel.Position           = UDim2.new(0, s(10), 0, s(10))
+    IconLabel.BackgroundTransparency = 1
+    IconLabel.Text               = "🛡️"
+    IconLabel.TextSize           = s(18)
+    IconLabel.Font               = Enum.Font.GothamBold
+    IconLabel.Parent             = Frame
+
+    local Title = Instance.new("TextLabel")
+    Title.Size               = UDim2.new(1, -s(50), 0, s(20))
+    Title.Position           = UDim2.new(0, s(40), 0, s(12))
+    Title.BackgroundTransparency = 1
+    Title.Text               = "ANTI-AFK ACTIVE"
+    Title.TextColor3         = Color3.fromRGB(220, 30, 30)
+    Title.TextSize           = s(11)
+    Title.Font               = Enum.Font.GothamBold
+    Title.TextXAlignment     = Enum.TextXAlignment.Left
+    Title.Parent             = Frame
+
+    if isMobile then
+        local DragHint = Instance.new("TextLabel")
+        DragHint.Size               = UDim2.new(0, s(20), 0, s(20))
+        DragHint.Position           = UDim2.new(1, -s(26), 0, s(8))
+        DragHint.BackgroundTransparency = 1
+        DragHint.Text               = "⇕"
+        DragHint.TextColor3         = Color3.fromRGB(180, 180, 180)
+        DragHint.TextSize           = s(14)
+        DragHint.Font               = Enum.Font.GothamBold
+        DragHint.ZIndex             = 3
+        DragHint.Parent             = Frame
+    end
+
+    local Dot = Instance.new("Frame")
+    Dot.Name             = "Dot"
+    Dot.Size             = UDim2.new(0, s(8), 0, s(8))
+    Dot.Position         = isMobile
+        and UDim2.new(1, -s(38), 0, s(14))
+        or  UDim2.new(1, -s(18), 0, s(14))
+    Dot.BackgroundColor3 = Color3.fromRGB(50, 220, 80)
+    Dot.BorderSizePixel  = 0
+    Dot.Parent           = Frame
+    Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+
+    local Sep = Instance.new("Frame")
+    Sep.Size             = UDim2.new(1, -s(20), 0, 1)
+    Sep.Position         = UDim2.new(0, s(10), 0, s(36))
+    Sep.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    Sep.BorderSizePixel  = 0
+    Sep.Parent           = Frame
+
+    local function MakeLine(icon, label, yPos)
+        local ic = Instance.new("TextLabel")
+        ic.Size               = UDim2.new(0, s(20), 0, s(20))
+        ic.Position           = UDim2.new(0, s(10), 0, yPos)
+        ic.BackgroundTransparency = 1
+        ic.Text               = icon
+        ic.TextSize           = s(13)
+        ic.Font               = Enum.Font.Gotham
+        ic.Parent             = Frame
+
+        local lb = Instance.new("TextLabel")
+        lb.Size               = UDim2.new(0, s(90), 0, s(18))
+        lb.Position           = UDim2.new(0, s(30), 0, yPos + 1)
+        lb.BackgroundTransparency = 1
+        lb.Text               = label
+        lb.TextColor3         = Color3.fromRGB(140, 140, 140)
+        lb.TextSize           = s(10)
+        lb.Font               = Enum.Font.Gotham
+        lb.TextXAlignment     = Enum.TextXAlignment.Left
+        lb.Parent             = Frame
+
+        local val = Instance.new("TextLabel")
+        val.Size              = UDim2.new(0, s(80), 0, s(18))
+        val.Position          = UDim2.new(1, -s(88), 0, yPos + 1)
+        val.BackgroundTransparency = 1
+        val.Text              = "--"
+        val.TextColor3        = Color3.fromRGB(255, 255, 255)
+        val.TextSize          = s(11)
+        val.Font              = Enum.Font.GothamBold
+        val.TextXAlignment    = Enum.TextXAlignment.Right
+        val.Parent            = Frame
+
+        return val
+    end
+
+    local AfkValue  = MakeLine("⏱",  "AFK time", s(44))
+    local PingValue = MakeLine("📶", "Ping",      s(66))
+    local FpsValue  = MakeLine("⚡", "FPS",       s(87))
+
+    -- Animação de entrada
+    TweenService:Create(Frame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(1, -(W + s(20)), 0, s(20))
+    }):Play()
+
+    -- Pulse no dot
+    TweenService:Create(Dot, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+        BackgroundTransparency = 0.7,
+        Size     = UDim2.new(0, s(10), 0, s(10)),
+        Position = isMobile
+            and UDim2.new(1, -s(39), 0, s(13))
+            or  UDim2.new(1, -s(19), 0, s(13))
+    }):Play()
+
+    MakeDraggable(Frame, Frame)
+
+    return ScreenGui, AfkValue, PingValue, FpsValue
+end
+
+-- ══════════════════════════════════════
+--  FPS  —  RenderStepped + os.clock()
+--  (sem Heartbeat, mede tempo real de frame)
+-- ══════════════════════════════════════
+
+--[[
+    Estratégia:
+    • RenderStepped roda logo antes de cada frame ser renderizado,
+      portanto dt aqui = tempo real entre dois frames = 1/FPS real.
+    • Guardamos os últimos WINDOW frames num ring-buffer e calculamos
+      a média → FPS suavizado e estável, sem pico de 1 frame.
+    • Os.clock() é usado só para medir o ping do próprio loop caso queira,
+      mas o dt do RenderStepped já é preciso o suficiente.
+--]]
+
+local FPS_WINDOW  = 30          -- quantos frames entram na média
+local fpsBuffer   = {}          -- ring-buffer circular
+local fpsBufIdx   = 0
+local fpsSum      = 0
+local fpsCurrent  = 0
+
+local function initFpsBuffer()
+    for i = 1, FPS_WINDOW do
+        fpsBuffer[i] = 1 / 60   -- seed com 60 fps
+    end
+    fpsSum = FPS_WINDOW * (1 / 60)
+end
+
+local function updateFps(dt)
+    fpsBufIdx = (fpsBufIdx % FPS_WINDOW) + 1
+    fpsSum    = fpsSum - fpsBuffer[fpsBufIdx] + dt
+    fpsBuffer[fpsBufIdx] = dt
+    fpsCurrent = FPS_WINDOW / fpsSum   -- FPS médio dos últimos WINDOW frames
+end
+
+-- ══════════════════════════════════════
+--  CONEXÕES & CICLO DE VIDA
+-- ══════════════════════════════════════
+
+local afkUpdateConn  = nil
+local fpsConn        = nil
+local afkStartTime   = nil
+
+local function StartAFKWidget()
+    afkStartTime = tick()
+    initFpsBuffer()
+
+    local gui, afkVal, pingVal, fpsVal = CreateAFKWidget()
+
+    -- ── FPS: atualiza todo frame via RenderStepped ──
+    fpsConn = RunService.RenderStepped:Connect(function(dt)
+        updateFps(dt)
+    end)
+
+    -- ── UI: atualiza a cada ~0.25 s via task.spawn loop ──
+    --    (evita escrever na GUI todo frame, que é desperdício)
+    afkUpdateConn = task.spawn(function()
+        while gui and gui.Parent do
+            -- ── Tempo AFK ──
+            local elapsed = tick() - afkStartTime
+            local mins    = math.floor(elapsed / 60)
+            local secs    = math.floor(elapsed % 60)
+            afkVal.Text = string.format("%02d:%02d", mins, secs)
+
+            if elapsed > 300 then
+                afkVal.TextColor3 = Color3.fromRGB(220, 30, 30)
+            elseif elapsed > 120 then
+                afkVal.TextColor3 = Color3.fromRGB(255, 180, 0)
+            else
+                afkVal.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
+
+            -- ── Ping ──
+            local ok, ping = pcall(function()
+                return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            end)
+            if ok then
+                pingVal.Text = ping .. " ms"
+                if ping > 200 then
+                    pingVal.TextColor3 = Color3.fromRGB(220, 30, 30)
+                elseif ping > 100 then
+                    pingVal.TextColor3 = Color3.fromRGB(255, 180, 0)
+                else
+                    pingVal.TextColor3 = Color3.fromRGB(50, 220, 80)
+                end
+            end
+
+            -- ── FPS (do ring-buffer atualizado pelo RenderStepped) ──
+            local fps = math.floor(fpsCurrent + 0.5)
+            fpsVal.Text = fps .. " fps"
+
+            if fps < 30 then
+                fpsVal.TextColor3 = Color3.fromRGB(220, 30, 30)
+            elseif fps < 50 then
+                fpsVal.TextColor3 = Color3.fromRGB(255, 180, 0)
+            else
+                fpsVal.TextColor3 = Color3.fromRGB(50, 220, 80)
+            end
+
+            task.wait(0.25)
+        end
+    end)
+end
+
+local function StopAFKWidget()
+    -- Para o loop de FPS
+    if fpsConn then
+        fpsConn:Disconnect()
+        fpsConn = nil
+    end
+
+    -- O task.spawn loop para sozinho quando gui.Parent sumir,
+    -- mas matamos a referência por segurança
+    afkUpdateConn = nil
+
+    local gui = PlayerGui:FindFirstChild("AntiAFKWidget")
+    if gui then
+        local frame = gui:FindFirstChild("Container")
+        if frame then
+            local tween = TweenService:Create(frame,
+                TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                { Position = UDim2.new(1, 20, 0, 20) }
+            )
+            tween:Play()
+            tween.Completed:Connect(function() gui:Destroy() end)
+        else
+            gui:Destroy()
+        end
+    end
+end
+
+return {
+    StartAFKWidget = StartAFKWidget,
+    StopAFKWidget  = StopAFKWidget,
+}
