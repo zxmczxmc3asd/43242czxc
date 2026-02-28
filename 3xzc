@@ -2329,9 +2329,15 @@ az.AnchorPoint=Vector2.new(0,1)
 end
 
 if ag.KeySystem.URL then
-ae("Get key","key",function()
-setclipboard(ag.KeySystem.URL)
-end,"Secondary",ax.Frame)
+    ae("Get key","key",function()
+        setclipboard(ag.KeySystem.URL)
+        ag.WindUI:Notify{
+            Title="Key System",
+            Content="Link copied! Join our Discord to get the key!",
+            Icon="link",
+            Duration=6,
+        }
+    end,"Secondary",ax.Frame)
 end
 
 if ag.KeySystem.API then
