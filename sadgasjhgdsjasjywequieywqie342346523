@@ -1,0 +1,850 @@
+-- ═══════════════════════════════════════════════════════════
+--                ADVANCED SHADERS MODULE v2.1
+--              Carregado via Loadstring
+-- ═══════════════════════════════════════════════════════════
+
+local TweenService  = game:GetService("TweenService")
+local RunService    = game:GetService("RunService")
+local Players       = game:GetService("Players")
+local Lighting      = game:GetService("Lighting")
+local Workspace     = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+-- ═══════════════════════════════════════════════════════════
+--                    MODULE RETURN
+-- ═══════════════════════════════════════════════════════════
+
+local ShaderModule = {}
+
+-- ═══════════════════════════════════════════════════════════
+--                  FPS COUNTER — GHOST HUD
+--           Modern Glassmorphism · Pro Dark UI
+-- ═══════════════════════════════════════════════════════════
+
+local FPSCounter = {
+    enabled    = false,
+    gui        = nil,
+    card       = nil,   -- FIX: declarado explicitamente
+    label      = nil,
+    infoLabel  = nil,
+    dot        = nil,
+    botLine    = nil,
+    connection = nil,
+    frameCount = 0,
+    lastUpdate = nil,   -- FIX: nil → inicializado no Start()
+    currentFPS = 0,
+    history    = {},
+    maxHistory = 30,
+    bars       = {},
+}
+
+-- ── Paleta ────────────────────────────────────────────────
+local C = {
+    bg          = Color3.fromRGB(8,   9,  12),
+    glass       = Color3.fromRGB(18,  20,  26),
+    glassEdge   = Color3.fromRGB(255, 255, 255),
+    accent      = Color3.fromRGB(255,  50,  80),
+    accentGlow  = Color3.fromRGB(180,  20,  50),
+    cyan        = Color3.fromRGB(0,   210, 255),
+    textPrimary = Color3.fromRGB(255, 255, 255),
+    textMuted   = Color3.fromRGB(100, 108, 130),
+    textDim     = Color3.fromRGB(55,  60,  78),
+    good        = Color3.fromRGB(50,  230, 130),
+    mid         = Color3.fromRGB(255, 195,  50),
+    bad         = Color3.fromRGB(255,  55,  75),
+    barBg       = Color3.fromRGB(22,  25,  32),
+}
+
+-- ── Utilidades ────────────────────────────────────────────
+local function corner(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r)
+    c.Parent = p
+end
+
+local function stroke(p, col, th, tr)
+    local s = Instance.new("UIStroke")
+    s.Color = col
+    s.Thickness = th
+    s.Transparency = tr or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = p
+end
+
+local function gradient(p, c0, c1, rot)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c0, c1)
+    g.Rotation = rot or 90
+    g.Parent = p
+end
+
+local function label(parent, props)
+    local l = Instance.new("TextLabel")
+    l.BackgroundTransparency = 1
+    for k, v in pairs(props) do l[k] = v end
+    l.Parent = parent
+    return l
+end
+
+local function tween(obj, props, t, style, dir)
+    if not obj or not obj.Parent then return end  -- FIX: guard nil
+    local info = TweenInfo.new(
+        t or 0.25,
+        style or Enum.EasingStyle.Quad,
+        dir  or Enum.EasingDirection.Out
+    )
+    TweenService:Create(obj, info, props):Play()
+end
+
+-- ── Drag ─────────────────────────────────────────────────
+local function makeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+
+    local function update(input)
+        -- FIX: guard nil camera
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        local delta = input.Position - dragStart
+        local vp    = camera.ViewportSize
+        local abs   = frame.AbsoluteSize
+        local ox    = math.clamp(startPos.X.Offset + delta.X, 0, vp.X - abs.X)
+        local oy    = math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - abs.Y)
+        frame.Position = UDim2.new(0, ox, 0, oy)
+    end
+
+    frame.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            dragStart = i.Position
+            startPos  = frame.Position
+        end
+    end)
+    frame.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch then
+            dragInput = i
+        end
+    end)
+    frame.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and i == dragInput then update(i) end
+    end)
+end
+
+-- ── BUILD GUI ─────────────────────────────────────────────
+function FPSCounter:Create()
+    if self.gui then return end  -- já existe, não recria
+
+    -- ScreenGui
+    local sg = Instance.new("ScreenGui")
+    sg.Name           = "GhostHUD"
+    sg.ResetOnSpawn   = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.IgnoreGuiInset = true
+
+    -- ── Main frame (glass card) ───────────────────────────
+    local card = Instance.new("Frame")
+    card.Name                   = "Card"
+    card.Size                   = UDim2.new(0, 210, 0, 130)
+    card.Position               = UDim2.new(1, -220, 0, 16)
+    card.BackgroundColor3       = C.glass
+    card.BackgroundTransparency = 0.12
+    card.BorderSizePixel        = 0
+    card.Active                 = true
+    card.Parent                 = sg
+    corner(card, 14)
+    stroke(card, C.glassEdge, 1, 0.88)
+
+    gradient(card,
+        Color3.fromRGB(28, 31, 42),
+        Color3.fromRGB(10, 12, 17),
+        95)
+
+    -- ── Accent top bar ────────────────────────────────────
+    local topBar = Instance.new("Frame")
+    topBar.Size             = UDim2.new(0, 44, 0, 2)
+    topBar.Position         = UDim2.new(0, 14, 0, 0)
+    topBar.BackgroundColor3 = C.accent
+    topBar.BorderSizePixel  = 0
+    topBar.ZIndex           = 4
+    topBar.Parent           = card
+    corner(topBar, 2)
+    gradient(topBar, C.accent, C.accentGlow, 0)
+
+    -- ── Header strip ─────────────────────────────────────
+    local hdr = Instance.new("Frame")
+    hdr.Size                  = UDim2.new(1, 0, 0, 28)
+    hdr.Position              = UDim2.new(0, 0, 0, 0)
+    hdr.BackgroundTransparency = 1
+    hdr.ZIndex                = 3
+    hdr.Parent                = card
+
+    -- Blinking status dot
+    local dot = Instance.new("Frame")
+    dot.Name             = "Dot"
+    dot.Size             = UDim2.new(0, 6, 0, 6)
+    dot.Position         = UDim2.new(0, 14, 0.5, -3)
+    dot.BackgroundColor3 = C.good
+    dot.BorderSizePixel  = 0
+    dot.ZIndex           = 5
+    dot.Parent           = hdr
+    corner(dot, 3)
+
+    -- "GHOST HUD" title
+    label(hdr, {
+        Size           = UDim2.new(1, -40, 1, 0),
+        Position       = UDim2.new(0, 26, 0, 0),
+        Text           = "GHOST  HUD",
+        TextColor3     = C.textMuted,
+        TextSize       = 9,
+        Font           = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex         = 4,
+    })
+
+    -- Live badge
+    local liveBadge = Instance.new("Frame")
+    liveBadge.Size             = UDim2.new(0, 34, 0, 14)
+    liveBadge.Position         = UDim2.new(1, -46, 0.5, -7)
+    liveBadge.BackgroundColor3 = C.accent
+    liveBadge.ZIndex           = 5
+    liveBadge.Parent           = hdr
+    corner(liveBadge, 3)
+    gradient(liveBadge, C.accent, C.accentGlow, 0)
+
+    label(liveBadge, {
+        Size           = UDim2.new(1, 0, 1, 0),
+        Text           = "LIVE",
+        TextColor3     = Color3.new(1, 1, 1),
+        TextSize       = 8,
+        Font           = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex         = 6,
+    })
+
+    -- ── Thin separator ────────────────────────────────────
+    local sep = Instance.new("Frame")
+    sep.Size                  = UDim2.new(1, -24, 0, 1)
+    sep.Position              = UDim2.new(0, 12, 0, 29)
+    sep.BackgroundColor3      = C.textDim
+    sep.BackgroundTransparency = 0.4
+    sep.BorderSizePixel       = 0
+    sep.Parent                = card
+
+    -- ── FPS big number ────────────────────────────────────
+    local fpsLabel = Instance.new("TextLabel")
+    fpsLabel.Name                  = "FPSLabel"
+    fpsLabel.Size                  = UDim2.new(0, 130, 0, 46)
+    fpsLabel.Position              = UDim2.new(0, 12, 0, 32)
+    fpsLabel.BackgroundTransparency = 1
+    fpsLabel.Text                  = "--"
+    fpsLabel.TextColor3            = C.good
+    fpsLabel.TextSize              = 38
+    fpsLabel.Font                  = Enum.Font.GothamBold
+    fpsLabel.TextXAlignment        = Enum.TextXAlignment.Left
+    fpsLabel.ZIndex                = 4
+    fpsLabel.Parent                = card
+
+    -- "FPS" unit label
+    label(card, {
+        Size           = UDim2.new(0, 36, 0, 14),
+        Position       = UDim2.new(0, 88, 0, 56),
+        Text           = "FPS",
+        TextColor3     = C.textMuted,
+        TextSize       = 10,
+        Font           = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex         = 4,
+    })
+
+    -- ── Mini bar graph ────────────────────────────────────
+    local graphContainer = Instance.new("Frame")
+    graphContainer.Name                  = "Graph"
+    graphContainer.Size                  = UDim2.new(0, 64, 0, 36)
+    graphContainer.Position              = UDim2.new(1, -76, 0, 34)
+    graphContainer.BackgroundColor3      = C.barBg
+    graphContainer.BackgroundTransparency = 0.3
+    graphContainer.BorderSizePixel       = 0
+    graphContainer.ZIndex                = 3
+    graphContainer.Parent                = card
+    corner(graphContainer, 6)
+    stroke(graphContainer, C.textDim, 1, 0.6)
+
+    local BAR_COUNT = 20
+    local barW      = 2
+    local barGap    = 1
+
+    self.bars = {}
+    for i = 1, BAR_COUNT do
+        local b = Instance.new("Frame")
+        b.Name             = "Bar" .. i
+        b.Size             = UDim2.new(0, barW, 0, 2)   -- FIX: altura mínima 2 ao invés de 0
+        b.Position         = UDim2.new(0, 2 + (i - 1) * (barW + barGap), 1, 0)
+        b.AnchorPoint      = Vector2.new(0, 1)
+        b.BackgroundColor3 = C.good
+        b.BackgroundTransparency = 0.5
+        b.BorderSizePixel  = 0
+        b.ZIndex           = 4
+        b.Parent           = graphContainer
+        corner(b, 1)
+        self.bars[i] = b
+    end
+
+    -- ── Bottom info row ───────────────────────────────────
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Name                  = "InfoLabel"
+    infoLabel.Size                  = UDim2.new(1, -16, 0, 22)
+    infoLabel.Position              = UDim2.new(0, 12, 1, -26)
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.Text                  = "AVG  --   ·   MIN  --   ·   PING  --ms"
+    infoLabel.TextColor3            = C.textMuted
+    infoLabel.TextSize              = 9
+    infoLabel.Font                  = Enum.Font.Gotham
+    infoLabel.TextXAlignment        = Enum.TextXAlignment.Left
+    infoLabel.ZIndex                = 4
+    infoLabel.Parent                = card
+
+    -- ── Bottom accent line ────────────────────────────────
+    local botLine = Instance.new("Frame")
+    botLine.Size             = UDim2.new(0, 0, 0, 1)
+    botLine.Position         = UDim2.new(0, 14, 1, -1)
+    botLine.BackgroundColor3 = C.accent
+    botLine.BorderSizePixel  = 0
+    botLine.ZIndex           = 5
+    botLine.Parent           = card
+    corner(botLine, 1)
+
+    task.delay(0.1, function()
+        tween(botLine, {Size = UDim2.new(0, 44, 0, 1)}, 0.6, Enum.EasingStyle.Expo)
+    end)
+
+    -- Card entrada animation
+    card.BackgroundTransparency = 1
+    card.Position = UDim2.new(1, -220, 0, -10)
+    tween(card, {
+        BackgroundTransparency = 0.12,
+        Position = UDim2.new(1, -220, 0, 16),
+    }, 0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+    -- FIX: salva todas as refs ANTES de parenter a gui
+    self.gui       = sg
+    self.card      = card
+    self.label     = fpsLabel
+    self.infoLabel = infoLabel
+    self.dot       = dot
+    self.botLine   = botLine
+
+    -- Parent to PlayerGui ou CoreGui
+    local localPlayer = Players.LocalPlayer
+    local ok = false
+    if localPlayer then
+        ok = pcall(function()
+            sg.Parent = localPlayer:WaitForChild("PlayerGui", 5)
+        end)
+    end
+    if not ok then
+        pcall(function()
+            sg.Parent = game:GetService("CoreGui")
+        end)
+    end
+
+    makeDraggable(card)
+
+    -- FIX: dot pulse usa referência local, sem depender de self.dot antes de ser set
+    task.spawn(function()
+        while dot and dot.Parent do
+            tween(dot, {BackgroundTransparency = 0.9}, 0.6, Enum.EasingStyle.Sine)
+            task.wait(0.65)
+            if not (dot and dot.Parent) then break end
+            tween(dot, {BackgroundTransparency = 0.0}, 0.6, Enum.EasingStyle.Sine)
+            task.wait(0.65)
+        end
+    end)
+end
+
+-- ── Color by FPS ─────────────────────────────────────────
+function FPSCounter:FPSColor(fps)
+    if fps >= 55 then return C.good
+    elseif fps >= 30 then return C.mid
+    else return C.bad end
+end
+
+-- ── Update bar graph ──────────────────────────────────────
+function FPSCounter:UpdateBars()
+    local count  = #self.bars
+    local hcount = #self.history
+    local maxFPS = 120
+
+    for i = 1, count do
+        local hi  = hcount - (count - i)
+        local fps = (hi >= 1 and self.history[hi]) or 0
+        local ratio = math.clamp(fps / maxFPS, 0, 1)
+        local barH  = math.max(2, math.floor(ratio * 30))
+        local col   = self:FPSColor(fps)
+        local bar   = self.bars[i]
+        if bar and bar.Parent then
+            tween(bar, {
+                Size             = UDim2.new(0, 2, 0, barH),
+                BackgroundColor3 = col,
+            }, 0.18, Enum.EasingStyle.Quart)
+        end
+    end
+end
+
+-- ── Start ─────────────────────────────────────────────────
+function FPSCounter:Start()
+    if self.connection then return end
+    self:Create()
+
+    -- FIX: garante que a GUI foi criada com sucesso
+    if not self.gui then
+        warn("[GhostHUD] Falha ao criar a GUI.")
+        return
+    end
+
+    self.gui.Enabled = true
+
+    -- FIX: inicializa lastUpdate com tick() atual para evitar divisão por zero
+    self.frameCount = 0
+    self.lastUpdate = tick()
+
+    self.connection = RunService.RenderStepped:Connect(function()
+        self.frameCount = self.frameCount + 1
+        local now = tick()
+        local elapsed = now - self.lastUpdate
+
+        -- FIX: mínimo de 0.1s para evitar divisão por zero
+        if elapsed >= 0.5 then
+            local fps = math.floor(self.frameCount / elapsed)
+            self.currentFPS = fps
+
+            table.insert(self.history, fps)
+            if #self.history > self.maxHistory then
+                table.remove(self.history, 1)
+            end
+
+            local sum, minV = 0, math.huge
+            for _, v in ipairs(self.history) do
+                sum = sum + v
+                if v < minV then minV = v end
+            end
+            local avg = math.floor(sum / #self.history)
+
+            -- FIX: ping seguro (LocalPlayer pode ser nil)
+            local ping = 0
+            local lp = Players.LocalPlayer
+            if lp then
+                local ok, p = pcall(function() return lp:GetNetworkPing() end)
+                ping = ok and math.floor(p * 1000) or 0
+            end
+
+            local col = self:FPSColor(fps)
+
+            -- FIX: guards em todas as refs antes de usar
+            if self.label and self.label.Parent then
+                tween(self.label, {TextColor3 = col}, 0.2)
+                self.label.Text = tostring(fps)
+            end
+
+            if self.infoLabel and self.infoLabel.Parent then
+                self.infoLabel.Text = string.format(
+                    "AVG  %d   ·   MIN  %d   ·   PING  %dms",
+                    avg,
+                    minV == math.huge and 0 or minV,
+                    ping
+                )
+            end
+
+            -- Pulse card border on bad fps
+            if fps < 30 and self.card and self.card.Parent then
+                tween(self.card, {BackgroundTransparency = 0.0}, 0.1)
+                task.delay(0.1, function()
+                    if self.card and self.card.Parent then
+                        tween(self.card, {BackgroundTransparency = 0.12}, 0.3)
+                    end
+                end)
+            end
+
+            if self.dot and self.dot.Parent then
+                tween(self.dot, {BackgroundColor3 = col}, 0.3)
+            end
+
+            self:UpdateBars()
+
+            -- FIX: reset APÓS usar os valores
+            self.frameCount = 0
+            self.lastUpdate = now
+        end
+    end)
+end
+
+-- ── Stop / Toggle / Destroy ───────────────────────────────
+function FPSCounter:Stop()
+    if self.connection then
+        self.connection:Disconnect()
+        self.connection = nil
+    end
+    if self.gui then self.gui.Enabled = false end
+end
+
+function FPSCounter:Toggle(enabled)
+    self.enabled = enabled
+    if enabled then self:Start() else self:Stop() end
+end
+
+function FPSCounter:Destroy()
+    self:Stop()
+    if self.gui then
+        self.gui:Destroy()
+        self.gui    = nil
+        self.card   = nil
+        self.label  = nil
+        self.infoLabel = nil
+        self.dot    = nil
+        self.botLine = nil
+    end
+    self.bars    = {}
+    self.history = {}
+end
+
+-- ═══════════════════════════════════════════════════════════
+--                   SHADER STATE MANAGER
+-- ═══════════════════════════════════════════════════════════
+
+local ShaderState = {
+    enabled           = false,
+    preset            = "Default",
+    reflectance       = 0.3,
+    clockTime         = 14,
+    geoLatitude       = 41.7,
+    bloomEnabled      = true,
+    bloomIntensity    = 0.5,
+    blurEnabled       = false,
+    blurSize          = 5,
+    dofEnabled        = true,
+    atmosphereDensity = 0.5,
+    transitionSpeed   = 1,
+    autoCycle         = false,
+    autoCycleSpeed    = 1,
+    performanceMode   = false
+}
+
+local ObjectCache = {
+    parts          = {},
+    effects        = {},
+    lastUpdate     = 0,
+    updateInterval = 5
+}
+
+-- ═══════════════════════════════════════════════════════════
+--                    SHADER PRESETS
+-- ═══════════════════════════════════════════════════════════
+
+local ShaderPresets = {
+    ["Default"] = {
+        ClockTime         = 14,
+        Brightness        = 2,
+        Ambient           = Color3.fromRGB(138, 138, 138),
+        OutdoorAmbient    = Color3.fromRGB(128, 128, 128),
+        ColorShift_Top    = Color3.fromRGB(0, 0, 0),
+        ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+        FogEnd   = 100000,
+        FogStart = 0
+    },
+    ["Morning"] = {
+        ClockTime         = 7,
+        Brightness        = 1.5,
+        Ambient           = Color3.fromRGB(255, 200, 150),
+        OutdoorAmbient    = Color3.fromRGB(255, 220, 180),
+        ColorShift_Top    = Color3.fromRGB(255, 150, 100),
+        ColorShift_Bottom = Color3.fromRGB(255, 200, 150),
+        FogEnd   = 100000,
+        FogStart = 0
+    },
+    ["Midday"] = {
+        ClockTime         = 12,
+        Brightness        = 3,
+        Ambient           = Color3.fromRGB(200, 200, 200),
+        OutdoorAmbient    = Color3.fromRGB(220, 220, 220),
+        ColorShift_Top    = Color3.fromRGB(0, 0, 0),
+        ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+        FogEnd   = 100000,
+        FogStart = 0
+    },
+    ["Afternoon"] = {
+        ClockTime         = 16,
+        Brightness        = 2.5,
+        Ambient           = Color3.fromRGB(255, 180, 120),
+        OutdoorAmbient    = Color3.fromRGB(255, 200, 140),
+        ColorShift_Top    = Color3.fromRGB(255, 120, 50),
+        ColorShift_Bottom = Color3.fromRGB(255, 150, 80),
+        FogEnd   = 100000,
+        FogStart = 0
+    },
+    ["Evening"] = {
+        ClockTime         = 18,
+        Brightness        = 1.8,
+        Ambient           = Color3.fromRGB(255, 130, 80),
+        OutdoorAmbient    = Color3.fromRGB(255, 150, 100),
+        ColorShift_Top    = Color3.fromRGB(255, 80, 20),
+        ColorShift_Bottom = Color3.fromRGB(255, 120, 60),
+        FogEnd   = 100000,
+        FogStart = 0
+    },
+    ["Night"] = {
+        ClockTime         = 21,
+        Brightness        = 0.8,
+        Ambient           = Color3.fromRGB(50, 50, 100),
+        OutdoorAmbient    = Color3.fromRGB(60, 60, 120),
+        ColorShift_Top    = Color3.fromRGB(20, 20, 80),
+        ColorShift_Bottom = Color3.fromRGB(40, 40, 100),
+        FogEnd   = 5000,
+        FogStart = 0
+    },
+    ["Midnight"] = {
+        ClockTime         = 0,
+        Brightness        = 0.5,
+        Ambient           = Color3.fromRGB(30, 30, 60),
+        OutdoorAmbient    = Color3.fromRGB(40, 40, 80),
+        ColorShift_Top    = Color3.fromRGB(10, 10, 40),
+        ColorShift_Bottom = Color3.fromRGB(20, 20, 60),
+        FogEnd   = 3000,
+        FogStart = 0
+    },
+    ["Sunset"] = {
+        ClockTime         = 17.5,
+        Brightness        = 2,
+        Ambient           = Color3.fromRGB(255, 100, 50),
+        OutdoorAmbient    = Color3.fromRGB(255, 130, 80),
+        ColorShift_Top    = Color3.fromRGB(255, 50, 0),
+        ColorShift_Bottom = Color3.fromRGB(255, 100, 50),
+        FogEnd   = 100000,
+        FogStart = 0
+    },
+    ["Foggy"] = {
+        ClockTime         = 14,
+        Brightness        = 1.5,
+        Ambient           = Color3.fromRGB(180, 180, 180),
+        OutdoorAmbient    = Color3.fromRGB(200, 200, 200),
+        ColorShift_Top    = Color3.fromRGB(150, 150, 150),
+        ColorShift_Bottom = Color3.fromRGB(180, 180, 180),
+        FogEnd   = 500,
+        FogStart = 0
+    },
+    ["Cyberpunk"] = {
+        ClockTime         = 22,
+        Brightness        = 1.2,
+        Ambient           = Color3.fromRGB(100, 50, 150),
+        OutdoorAmbient    = Color3.fromRGB(120, 60, 180),
+        ColorShift_Top    = Color3.fromRGB(255, 0, 255),
+        ColorShift_Bottom = Color3.fromRGB(0, 255, 255),
+        FogEnd   = 1000,
+        FogStart = 0
+    }
+}
+
+-- ═══════════════════════════════════════════════════════════
+--                 PERFORMANCE OPTIMIZATION
+-- ═══════════════════════════════════════════════════════════
+
+local function UpdateObjectCache()
+    local currentTime = tick()
+    if currentTime - ObjectCache.lastUpdate < ObjectCache.updateInterval then
+        return
+    end
+
+    ObjectCache.parts = {}
+
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Transparency < 1 then
+            local size = obj.Size
+            if size.X > 0.5 or size.Y > 0.5 or size.Z > 0.5 then
+                table.insert(ObjectCache.parts, obj)
+            end
+        end
+    end
+
+    ObjectCache.lastUpdate = currentTime
+end
+
+-- ═══════════════════════════════════════════════════════════
+--                   SHADER FUNCTIONS
+-- ═══════════════════════════════════════════════════════════
+
+local activeTweens = {}
+
+local function ApplyShaderPreset(presetName, smooth)
+    local preset = ShaderPresets[presetName]
+    if not preset then return end
+
+    smooth = smooth == nil and true or smooth
+    local duration = smooth and ShaderState.transitionSpeed or 0
+
+    for _, t in pairs(activeTweens) do
+        if t then t:Cancel() end
+    end
+    activeTweens = {}
+
+    if duration > 0 then
+        local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+        local goals = {
+            ClockTime         = preset.ClockTime,
+            Brightness        = preset.Brightness,
+            Ambient           = preset.Ambient,
+            OutdoorAmbient    = preset.OutdoorAmbient,
+            ColorShift_Top    = preset.ColorShift_Top,
+            ColorShift_Bottom = preset.ColorShift_Bottom,
+            FogEnd            = preset.FogEnd,
+            FogStart          = preset.FogStart
+        }
+        local t = TweenService:Create(Lighting, tweenInfo, goals)
+        table.insert(activeTweens, t)
+        t:Play()
+    else
+        Lighting.ClockTime         = preset.ClockTime
+        Lighting.Brightness        = preset.Brightness
+        Lighting.Ambient           = preset.Ambient
+        Lighting.OutdoorAmbient    = preset.OutdoorAmbient
+        Lighting.ColorShift_Top    = preset.ColorShift_Top
+        Lighting.ColorShift_Bottom = preset.ColorShift_Bottom
+        Lighting.FogEnd            = preset.FogEnd
+        Lighting.FogStart          = preset.FogStart
+    end
+end
+
+local reflectanceConnection = nil
+
+local function ToggleShaders(enabled)
+    ShaderState.enabled = enabled
+
+    if reflectanceConnection then
+        reflectanceConnection:Disconnect()
+        reflectanceConnection = nil
+    end
+
+    if enabled then
+        UpdateObjectCache()
+
+        if ShaderState.performanceMode then
+            for _, part in ipairs(ObjectCache.parts) do
+                if part and part.Parent then
+                    part.Reflectance = ShaderState.reflectance
+                end
+            end
+        else
+            task.spawn(function()
+                local batchSize = 50
+                local count = 0
+                for _, part in ipairs(ObjectCache.parts) do
+                    if part and part.Parent then
+                        part.Reflectance = ShaderState.reflectance
+                        count = count + 1
+                        if count % batchSize == 0 then task.wait() end
+                    end
+                end
+            end)
+        end
+
+        reflectanceConnection = Workspace.DescendantAdded:Connect(function(obj)
+            if obj:IsA("BasePart") and obj.Transparency < 1 then
+                task.wait(0.1)
+                if obj and obj.Parent then
+                    obj.Reflectance = ShaderState.reflectance
+                end
+            end
+        end)
+    else
+        task.spawn(function()
+            local batchSize = 50
+            local count = 0
+            for _, part in ipairs(ObjectCache.parts) do
+                if part and part.Parent then
+                    part.Reflectance = 0
+                    count = count + 1
+                    if count % batchSize == 0 then task.wait() end
+                end
+            end
+        end)
+    end
+
+    Lighting.Technology = enabled and Enum.Technology.Future or Enum.Technology.ShadowMap
+end
+
+local function GetOrCreateEffect(className, instanceName, properties)
+    local effect = Lighting:FindFirstChild(instanceName)
+    if not effect then
+        effect = Instance.new(className)
+        effect.Name   = instanceName
+        effect.Parent = Lighting
+    end
+    for prop, value in pairs(properties) do
+        pcall(function() effect[prop] = value end)
+    end
+    return effect
+end
+
+-- ═══════════════════════════════════════════════════════════
+--                    AUTO CYCLE SYSTEM
+-- ═══════════════════════════════════════════════════════════
+
+local autoCycleConnection = nil
+local cyclePresets = {"Morning", "Midday", "Afternoon", "Evening", "Night", "Midnight"}
+local currentCycleIndex = 1
+
+local function StartAutoCycle()
+    if autoCycleConnection then return end
+    autoCycleConnection = RunService.Heartbeat:Connect(function()
+        task.wait(60 / ShaderState.autoCycleSpeed)
+        currentCycleIndex = currentCycleIndex % #cyclePresets + 1
+        ApplyShaderPreset(cyclePresets[currentCycleIndex], true)
+    end)
+end
+
+local function StopAutoCycle()
+    if autoCycleConnection then
+        autoCycleConnection:Disconnect()
+        autoCycleConnection = nil
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════
+--                    CLEANUP FUNCTION
+-- ═══════════════════════════════════════════════════════════
+
+local function Cleanup()
+    StopAutoCycle()
+    FPSCounter:Destroy()
+
+    if reflectanceConnection then
+        reflectanceConnection:Disconnect()
+        reflectanceConnection = nil
+    end
+
+    for _, t in pairs(activeTweens) do
+        if t then t:Cancel() end
+    end
+    activeTweens = {}
+end
+
+-- ═══════════════════════════════════════════════════════════
+--                    MODULE EXPORTS
+-- ═══════════════════════════════════════════════════════════
+
+ShaderModule.FPSCounter        = FPSCounter
+ShaderModule.ShaderState       = ShaderState
+ShaderModule.ApplyShaderPreset = ApplyShaderPreset
+ShaderModule.ToggleShaders     = ToggleShaders
+ShaderModule.GetOrCreateEffect = GetOrCreateEffect
+ShaderModule.StartAutoCycle    = StartAutoCycle
+ShaderModule.StopAutoCycle     = StopAutoCycle
+ShaderModule.UpdateObjectCache = UpdateObjectCache
+ShaderModule.ObjectCache       = ObjectCache
+ShaderModule.Cleanup           = Cleanup
+
+return ShaderModule
