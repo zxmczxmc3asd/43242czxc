@@ -254,7 +254,7 @@ function FPSCounter:Create()
     -- "FPS" unit label
     label(card, {
         Size           = UDim2.new(0, 36, 0, 14),
-        Position       = UDim2.new(0, 40, 0, 36),
+        Position       = UDim2.new(0, 50, 0, 56),
         Text           = "FPS",
         TextColor3     = C.textMuted,
         TextTransparency = 0.7,
