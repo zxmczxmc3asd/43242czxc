@@ -321,7 +321,7 @@ function FPSCounter:Create()
     corner(botLine, 1)
 
     task.delay(0.1, function()
-        tween(botLine, {Size = UDim2.new(0, 44, 0, 1)}, 0.6, Enum.EasingStyle.Expo)
+        tween(botLine, {Size = UDim2.new(0, 44, 0, 1)}, 0.6, Enum.EasingStyle.Exponential)
     end)
 
     -- Card entrada animation
