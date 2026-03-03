@@ -101,14 +101,15 @@ local function makeDraggable(frame)
     local dragging, dragInput, dragStart, startPos
 
     local function update(input)
-        -- FIX: guard nil camera
         local camera = workspace.CurrentCamera
         if not camera then return end
         local delta = input.Position - dragStart
         local vp    = camera.ViewportSize
         local abs   = frame.AbsoluteSize
-        local ox    = math.clamp(startPos.X.Offset + delta.X, 0, vp.X - abs.X)
-        local oy    = math.clamp(startPos.Y.Offset + delta.Y, 0, vp.Y - abs.Y)
+
+        -- FIX: usa AbsolutePosition (pixels reais) em vez de Position (UDim2 com escala)
+        local ox = math.clamp(startPos.X + delta.X, 0, vp.X - abs.X)
+        local oy = math.clamp(startPos.Y + delta.Y, 0, vp.Y - abs.Y)
         frame.Position = UDim2.new(0, ox, 0, oy)
     end
 
@@ -117,7 +118,8 @@ local function makeDraggable(frame)
         or i.UserInputType == Enum.UserInputType.Touch then
             dragging  = true
             dragStart = i.Position
-            startPos  = frame.Position
+            -- FIX: salva AbsolutePosition (Vector2 em pixels), não frame.Position (UDim2)
+            startPos  = Vector2.new(frame.AbsolutePosition.X, frame.AbsolutePosition.Y)
         end
     end)
     frame.InputChanged:Connect(function(i)
