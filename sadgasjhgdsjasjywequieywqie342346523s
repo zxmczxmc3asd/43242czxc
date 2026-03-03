@@ -259,7 +259,7 @@ function FPSCounter:Create()
         Position       = UDim2.new(0, 70, 0, 56),
         Text           = "FPS",
         TextColor3     = C.textMuted,
-        TextTransparency = 0.7,
+        TextTransparency = 0.8,
         TextSize       = 17,
         Font           = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
