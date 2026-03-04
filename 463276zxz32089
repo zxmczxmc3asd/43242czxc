@@ -96,20 +96,29 @@ local function tween(obj, props, t, style, dir)
     TweenService:Create(obj, info, props):Play()
 end
 
-local UserInputService = game:GetService("UserInputService")
+
+local UIS = game:GetService("UserInputService")
 
 local function makeDraggable(frame)
 	local drag, ds, sp
+
 	frame.InputBegan:Connect(function(i)
-		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-			drag=true; ds=i.Position; sp=frame.Position
-			i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			drag = true
+			ds = i.Position
+			sp = frame.Position
+			i.Changed:Connect(function()
+				if i.UserInputState == Enum.UserInputState.End then
+					drag = false
+				end
+			end)
 		end
 	end)
-	frame.InputChanged:Connect(function(i)
-		if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-			local d=i.Position-ds
-			frame.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)
+
+	UIS.InputChanged:Connect(function(i)
+		if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - ds
+			frame.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
 		end
 	end)
 end
