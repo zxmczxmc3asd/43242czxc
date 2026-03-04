@@ -99,57 +99,20 @@ end
 local UserInputService = game:GetService("UserInputService")
 
 local function makeDraggable(frame)
-    local dragging = false
-    local dragOffset -- Vector2: offset do cursor dentro do frame
-
-    local function getBounds()
-        local parent = frame.Parent
-        if parent and parent:IsA("GuiObject") then
-            return parent.AbsoluteSize
-        end
-        local cam = workspace.CurrentCamera
-        return cam and cam.ViewportSize or Vector2.new(0, 0)
-    end
-
-    local function update(inputPosition)
-        local bounds = getBounds()
-        local size = frame.AbsoluteSize
-
-        local newX = math.clamp(inputPosition.X - dragOffset.X, 0, bounds.X - size.X)
-        local newY = math.clamp(inputPosition.Y - dragOffset.Y, 0, bounds.Y - size.Y)
-
-        frame.Position = UDim2.fromOffset(newX, newY)
-    end
-
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1
-        and input.UserInputType ~= Enum.UserInputType.Touch then return end
-
-        -- offset = posição do cursor DENTRO do frame
-        -- isso elimina o "salto" ao começar o drag
-        local absPos = frame.AbsolutePosition
-        dragOffset = Vector2.new(
-            input.Position.X - absPos.X,
-            input.Position.Y - absPos.Y
-        )
-        dragging = true
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
-            update(input.Position)
-        end
-    end)
+	local drag, ds, sp
+	frame.InputBegan:Connect(function(i)
+		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+			drag=true; ds=i.Position; sp=frame.Position
+			i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+		end
+	end)
+	frame.InputChanged:Connect(function(i)
+		if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+			local d=i.Position-ds
+			frame.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)
+		end
+	end)
 end
-
 -- ── BUILD GUI ─────────────────────────────────────────────
 function FPSCounter:Create()
     if self.gui then return end  -- já existe, não recria
