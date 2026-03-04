@@ -96,67 +96,56 @@ local function tween(obj, props, t, style, dir)
     TweenService:Create(obj, info, props):Play()
 end
 
--- drag
+local UserInputService = game:GetService("UserInputService")
 
 local function makeDraggable(frame)
     local dragging = false
-    local dragStartPos -- Vector2 (input start)
-    local startAbsPos  -- Vector2 (frame start)
-    local dragInput
+    local dragOffset -- Vector2: offset do cursor dentro do frame
 
     local function getBounds()
         local parent = frame.Parent
         if parent and parent:IsA("GuiObject") then
             return parent.AbsoluteSize
         end
-        -- fallback decente
         local cam = workspace.CurrentCamera
         return cam and cam.ViewportSize or Vector2.new(0, 0)
     end
 
-    local function update(input)
-        if not dragging then return end
-
-        local delta = input.Position - dragStartPos
+    local function update(inputPosition)
         local bounds = getBounds()
         local size = frame.AbsoluteSize
 
-        local newX = math.clamp(startAbsPos.X + delta.X, 0, bounds.X - size.X)
-        local newY = math.clamp(startAbsPos.Y + delta.Y, 0, bounds.Y - size.Y)
+        local newX = math.clamp(inputPosition.X - dragOffset.X, 0, bounds.X - size.X)
+        local newY = math.clamp(inputPosition.Y - dragOffset.Y, 0, bounds.Y - size.Y)
 
         frame.Position = UDim2.fromOffset(newX, newY)
     end
 
     frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragInput = input
-            dragStartPos = input.Position
-            startAbsPos = frame.AbsolutePosition
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then return end
 
-            -- captura fim do drag mesmo se o mouse sair do frame
-            local endedConn
-            endedConn = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    dragInput = nil
-                    if endedConn then endedConn:Disconnect() end
-                end
-            end)
-        end
-    end)
+        -- offset = posição do cursor DENTRO do frame
+        -- isso elimina o "salto" ao começar o drag
+        local absPos = frame.AbsolutePosition
+        dragOffset = Vector2.new(
+            input.Position.X - absPos.X,
+            input.Position.Y - absPos.Y
+        )
+        dragging = true
 
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input == dragInput then
-            update(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            update(input.Position)
         end
     end)
 end
