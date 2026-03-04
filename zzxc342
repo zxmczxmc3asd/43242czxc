@@ -96,7 +96,7 @@ local function tween(obj, props, t, style, dir)
     TweenService:Create(obj, info, props):Play()
 end
 
-
+-- ── DRAG ─────────────────────────────────────────────
 local UIS = game:GetService("UserInputService")
 
 local function makeDraggable(frame)
@@ -540,7 +540,7 @@ local ShaderPresets = {
         OutdoorAmbient    = Color3.fromRGB(128, 128, 128),
         ColorShift_Top    = Color3.fromRGB(0, 0, 0),
         ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
-        FogEnd   = 100000,
+        FogEnd   = 8000,
         FogStart = 0
     },
     ["Morning"] = {
@@ -550,7 +550,7 @@ local ShaderPresets = {
         OutdoorAmbient    = Color3.fromRGB(255, 220, 180),
         ColorShift_Top    = Color3.fromRGB(255, 150, 100),
         ColorShift_Bottom = Color3.fromRGB(255, 200, 150),
-        FogEnd   = 100000,
+        FogEnd   = 8000,
         FogStart = 0
     },
     ["Midday"] = {
@@ -560,7 +560,7 @@ local ShaderPresets = {
         OutdoorAmbient    = Color3.fromRGB(220, 220, 220),
         ColorShift_Top    = Color3.fromRGB(0, 0, 0),
         ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
-        FogEnd   = 100000,
+        FogEnd   = 8000,
         FogStart = 0
     },
     ["Afternoon"] = {
@@ -570,7 +570,7 @@ local ShaderPresets = {
         OutdoorAmbient    = Color3.fromRGB(255, 200, 140),
         ColorShift_Top    = Color3.fromRGB(255, 120, 50),
         ColorShift_Bottom = Color3.fromRGB(255, 150, 80),
-        FogEnd   = 100000,
+        FogEnd   = 8000,
         FogStart = 0
     },
     ["Evening"] = {
@@ -580,7 +580,7 @@ local ShaderPresets = {
         OutdoorAmbient    = Color3.fromRGB(255, 150, 100),
         ColorShift_Top    = Color3.fromRGB(255, 80, 20),
         ColorShift_Bottom = Color3.fromRGB(255, 120, 60),
-        FogEnd   = 100000,
+        FogEnd   = 8000,
         FogStart = 0
     },
     ["Night"] = {
