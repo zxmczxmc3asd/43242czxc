@@ -333,9 +333,16 @@ mainTab:Toggle({
     Type  = "Checkbox",
     Value = false,
     Callback = function(state)
-        _G.AutoCollect = state
-        if not state then return end
-
+    _G.AutoCollect = state
+    if not state then
+        -- Restaura controles mobile ao desativar
+        pcall(function()
+            local PlayerModule = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"))
+            PlayerModule:GetControls():Enable()
+        end)
+        return
+    end
+    -- ... resto do código permanece o mesmo, sem alterações
         task.spawn(function()
             local player          = Players.LocalPlayer
             local VisualBrainrots = workspace:FindFirstChild("VisualBrainrots")
