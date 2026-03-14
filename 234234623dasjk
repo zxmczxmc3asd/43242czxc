@@ -325,7 +325,6 @@ mainTab:Toggle({
         end)
     end
 })
-
 -- ── Auto Collect Brainrots (Area 10) ───────────────────────
 mainTab:Toggle({
     Title = "✨ Auto Collect Brainrots (Area 10)",
@@ -338,18 +337,18 @@ mainTab:Toggle({
         if not state then return end
 
         task.spawn(function()
-            local player         = Players.LocalPlayer
+            local player          = Players.LocalPlayer
             local VisualBrainrots = workspace:FindFirstChild("VisualBrainrots")
             if not VisualBrainrots then return end
 
             local CONFIG = {
-                HOLD_TIME             = 1.5,
-                TELEPORT_OFFSET       = Vector3.new(0, 5, 0),
-                TELEPORT_WAIT         = 0.1,
-                LOOP_IDLE_WAIT        = 0.2,
-                MAX_COLLECTED_CACHE   = 500,
-                ZONE_RADIUS           = 300,
-                START_ZONE            = "10",
+                HOLD_TIME           = 1.5,
+                TELEPORT_OFFSET     = Vector3.new(0, 5, 0),
+                TELEPORT_WAIT       = 0.1,
+                LOOP_IDLE_WAIT      = 0.2,
+                MAX_COLLECTED_CACHE = 500,
+                ZONE_RADIUS         = 300,
+                START_ZONE          = "10",
             }
 
             local collected = {}
@@ -397,36 +396,19 @@ mainTab:Toggle({
                 return true
             end
 
-            local UserInputService = game:GetService("UserInputService")
-
-local function holdE(duration)
-    duration = duration or CONFIG.HOLD_TIME
-
-    -- Detecta se é mobile
-    local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-
-    if isMobile then
-        -- No mobile usa ContextActionService para simular o input
-        local ContextActionService = game:GetService("ContextActionService")
-        local actionName = "HoldE_" .. tostring(tick())
-
-        ContextActionService:BindAction(actionName, function() end, false, Enum.KeyCode.E)
-
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        end)
-        task.wait(duration)
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        end)
-
-        ContextActionService:UnbindAction(actionName)
-    else
-        pcall(function() VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.E, false, game) end)
-        task.wait(duration)
-        pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) end)
-    end
-end
+            -- ✅ CORRIGIDO: usa fireproximityprompt (funciona PC + Mobile)
+            local function collectTarget(instance)
+                local prompt = instance:FindFirstChildWhichIsA("ProximityPrompt", true)
+                if prompt then
+                    pcall(fireproximityprompt, prompt)
+                    task.wait(0.3)
+                    return
+                end
+                -- Fallback PC caso não ache o prompt
+                pcall(function() VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.E, false, game) end)
+                task.wait(CONFIG.HOLD_TIME)
+                pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) end)
+            end
 
             local function clearCacheIfNeeded()
                 local count = 0
@@ -495,7 +477,7 @@ end
                         continue
                     end
 
-                    holdE(CONFIG.HOLD_TIME)
+                    collectTarget(target.instance)  -- ✅ substituído aqui
                     collected[target.key] = true
                     task.wait(0.01)
                 end
