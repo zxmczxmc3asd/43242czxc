@@ -401,7 +401,7 @@ mainTab:Toggle({
                 local prompt = instance:FindFirstChildWhichIsA("ProximityPrompt", true)
                 if prompt then
                     pcall(fireproximityprompt, prompt)
-                    task.wait(0.3)
+                    task.wait(0.5)
                     return
                 end
                 -- Fallback PC caso não ache o prompt
