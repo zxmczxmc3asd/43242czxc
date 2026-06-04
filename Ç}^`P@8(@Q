@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════════════════════════════╗
 --                    STALKER GUI MODULE
---                    Version: 4.0 — Premium Redesign
+--                    Version: 4.1 — Close Anim + Spectate Fix
 -- ╚══════════════════════════════════════════════════════════════╝
 
 local Players          = game:GetService("Players")
@@ -461,9 +461,34 @@ local function createStalkerGUI(target)
 			end
 			isSpectating = false
 		end
-		tween(win, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {BackgroundTransparency=1})
-		task.delay(0.22, function()
-			if vignette then vignette:Destroy() end
+		-- Slide down + fade out the window
+		local exitInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		local curPos = win.Position
+		tween(win, exitInfo, {
+			Position = UDim2.new(curPos.X.Scale, curPos.X.Offset, curPos.Y.Scale, curPos.Y.Offset + 20),
+			BackgroundTransparency = 1,
+		})
+		for _, child in ipairs(win:GetDescendants()) do
+			if child:IsA("Frame") or child:IsA("ScrollingFrame") then
+				pcall(function() tween(child, exitInfo, {BackgroundTransparency = 1}) end)
+			end
+			if child:IsA("TextLabel") or child:IsA("TextButton") then
+				pcall(function()
+					tween(child, exitInfo, {BackgroundTransparency = 1, TextTransparency = 1})
+				end)
+			end
+			if child:IsA("ImageLabel") then
+				pcall(function()
+					tween(child, exitInfo, {BackgroundTransparency = 1, ImageTransparency = 1})
+				end)
+			end
+			if child:IsA("UIStroke") then
+				pcall(function() tween(child, exitInfo, {Transparency = 1}) end)
+			end
+		end
+		-- Fade the dark vignette overlay
+		tween(vignette, TweenInfo.new(0.28, Enum.EasingStyle.Quad), {BackgroundTransparency = 1})
+		task.delay(0.32, function()
 			stalkGui:Destroy()
 		end)
 	end)
@@ -721,15 +746,18 @@ local function createStalkerGUI(target)
 	end)
 	specBtn.MouseButton1Click:Connect(function()
 		local lp = Players.LocalPlayer
+		local fadeInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad)
 		if isSpectating then
 			if lp.Character then
 				local lh = lp.Character:FindFirstChild("Humanoid")
 				if lh then workspace.CurrentCamera.CameraSubject = lh end
 			end
-			specBtn.Text             = "👁️  Spectate"
+			specBtn.Text = "👁️  Spectate"
 			tween(specBtn, TweenInfo.new(0.15), {BackgroundColor3=C.CARD, TextColor3=C.MUTED})
 			stroke(specBtn, C.BORDER_LT, 1.5, 0.2)
 			isSpectating = false
+			-- Restore vignette
+			tween(vignette, fadeInfo, {BackgroundTransparency = 0.55})
 		else
 			if target.Character then
 				local th = target.Character:FindFirstChild("Humanoid")
@@ -739,6 +767,8 @@ local function createStalkerGUI(target)
 					tween(specBtn, TweenInfo.new(0.15), {BackgroundColor3=C.RED_DIM, TextColor3=C.RED_GLOW})
 					stroke(specBtn, C.RED, 1.5, 0.3)
 					isSpectating = true
+					-- Hide vignette so the view is clean
+					tween(vignette, fadeInfo, {BackgroundTransparency = 1})
 				end
 			end
 		end
