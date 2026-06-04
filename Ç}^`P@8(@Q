@@ -275,15 +275,11 @@ local function createStalkerGUI(target)
 	gui.Parent         = CoreGui
 	stalkGui = gui
 
-	-- Backdrop blur vignette
-	local vignette = Instance.new("Frame")
-	vignette.Size                    = UDim2.new(1,0,1,0)
-	vignette.BackgroundColor3        = Color3.new(0,0,0)
-	vignette.BackgroundTransparency  = 0.55
-	vignette.BorderSizePixel         = 0
-	vignette.Active                  = false
-	vignette.ZIndex                  = 1
-	vignette.Parent                  = gui
+	-- No background vignette
+	local vignette = Instance.new("Frame")  -- stub kept for compatibility
+	vignette.BackgroundTransparency = 1
+	vignette.Size = UDim2.new(0,0,0,0)
+	vignette.Parent = gui
 
 	-- ── MAIN WINDOW ─────────────────────────────────────────────
 	local win = Instance.new("Frame")
@@ -436,7 +432,8 @@ local function createStalkerGUI(target)
 	closeBtn.Text             = "X"
 	closeBtn.TextColor3       = C.RED_GLOW
 	closeBtn.Font             = Enum.Font.GothamBold
-	closeBtn.TextSize         = 13
+	closeBtn.TextSize         = isMobile and 13 or 14
+	closeBtn.TextScaled       = false
 	closeBtn.BorderSizePixel  = 0
 	closeBtn.ZIndex           = 13
 	closeBtn.Parent           = hdr
@@ -486,6 +483,10 @@ local function createStalkerGUI(target)
 				pcall(function() tween(child, exitInfo, {Transparency = 1}) end)
 			end
 		end
+
+		task.delay(0.32, function()
+			stalkGui:Destroy()
+		end)
 	end)
 
 	-- ── SCROLL AREA ─────────────────────────────────────────────
@@ -751,8 +752,7 @@ local function createStalkerGUI(target)
 			tween(specBtn, TweenInfo.new(0.15), {BackgroundColor3=C.CARD, TextColor3=C.MUTED})
 			stroke(specBtn, C.BORDER_LT, 1.5, 0.2)
 			isSpectating = false
-			-- Restore vignette
-			tween(vignette, fadeInfo, {BackgroundTransparency = 0.55})
+
 		else
 			if target.Character then
 				local th = target.Character:FindFirstChild("Humanoid")
@@ -762,8 +762,7 @@ local function createStalkerGUI(target)
 					tween(specBtn, TweenInfo.new(0.15), {BackgroundColor3=C.RED_DIM, TextColor3=C.RED_GLOW})
 					stroke(specBtn, C.RED, 1.5, 0.3)
 					isSpectating = true
-					-- Hide vignette so the view is clean
-					tween(vignette, fadeInfo, {BackgroundTransparency = 1})
+
 				end
 			end
 		end
