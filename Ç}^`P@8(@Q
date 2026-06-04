@@ -433,7 +433,7 @@ local function createStalkerGUI(target)
 	closeBtn.Size             = UDim2.new(0, 28, 0, 28)
 	closeBtn.Position         = UDim2.new(1,-40,0,isMobile and 10 or 18)
 	closeBtn.BackgroundColor3 = C.RED_DIM
-	closeBtn.Text             = "✕"
+	closeBtn.Text             = "X"
 	closeBtn.TextColor3       = C.RED_GLOW
 	closeBtn.Font             = Enum.Font.GothamBold
 	closeBtn.TextSize         = 13
@@ -486,11 +486,6 @@ local function createStalkerGUI(target)
 				pcall(function() tween(child, exitInfo, {Transparency = 1}) end)
 			end
 		end
-		-- Fade the dark vignette overlay
-		tween(vignette, TweenInfo.new(0.28, Enum.EasingStyle.Quad), {BackgroundTransparency = 1})
-		task.delay(0.32, function()
-			stalkGui:Destroy()
-		end)
 	end)
 
 	-- ── SCROLL AREA ─────────────────────────────────────────────
