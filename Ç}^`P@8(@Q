@@ -61,10 +61,19 @@ local C = {
 -- ╚══════════════════════════════════════════════════════════════╝
 
 local function formatNumber(num)
-	if num >= 1e9 then return string.format("%.2fB", num/1e9)
-	elseif num >= 1e6 then return string.format("%.2fM", num/1e6)
-	elseif num >= 1e3 then return string.format("%.1fK", num/1e3)
-	else return tostring(math.floor(num)) end
+	-- math.floor em todas as divisões: nunca arredonda pra cima
+	if num >= 1e9 then
+		local n = math.floor(num / 1e7) / 100  -- 2 casas, truncado
+		return string.format("%.2fB", n)
+	elseif num >= 1e6 then
+		local n = math.floor(num / 1e4) / 100
+		return string.format("%.2fM", n)
+	elseif num >= 1e3 then
+		local n = math.floor(num / 100) / 10   -- 1 casa, truncado
+		return string.format("%.1fK", n)
+	else
+		return tostring(math.floor(num))
+	end
 end
 
 local function formatTime(seconds)
