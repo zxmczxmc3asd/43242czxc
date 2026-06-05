@@ -1,1 +1,470 @@
+-- ╔══════════════════════════════════════════════════════════════╗
+--                    ANTI-AFK STATUS WIDGET
+--                    Version: 2.0 — Premium Redesign
+--                    ✅ Draggable  ✅ Mobile + PC ready
+-- ╚══════════════════════════════════════════════════════════════╝
 
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local Stats            = game:GetService("Stats")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                        DEVICE DETECT
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local VP       = workspace.CurrentCamera.ViewportSize
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- Responsive sizes — mobile compacto, PC confortável
+-- Sem over-scaling: mobile não fica enorme, PC não fica minúsculo
+local R = {
+	W        = isMobile and 170 or 210,
+	H        = isMobile and 108 or 128,
+	HDR_H    = isMobile and 34  or 42,
+	ROW_H    = isMobile and 20  or 24,
+	ROW_GAP  = isMobile and 3   or 5,
+	ICON_SZ  = isMobile and 12  or 14,
+	LBL_SZ   = isMobile and 9   or 10,
+	VAL_SZ   = isMobile and 10  or 12,
+	TITLE_SZ = isMobile and 9   or 11,
+	DOT_SZ   = isMobile and 7   or 8,
+	PAD_X    = isMobile and 10  or 12,
+	RADIUS   = isMobile and 10  or 12,
+}
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                         PALETTE
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local C = {
+	BG       = Color3.fromRGB(6,   6,   9),
+	SURFACE  = Color3.fromRGB(11,  11,  15),
+	CARD     = Color3.fromRGB(16,  16,  22),
+
+	RED      = Color3.fromRGB(220, 40,  55),
+	RED_DARK = Color3.fromRGB(100, 18,  26),
+	RED_GLOW = Color3.fromRGB(255, 90,  100),
+
+	WHITE    = Color3.fromRGB(240, 240, 248),
+	MUTED    = Color3.fromRGB(110, 110, 128),
+	DIM      = Color3.fromRGB(55,  55,  68),
+
+	BORDER   = Color3.fromRGB(30,  30,  42),
+	BORDER_LT= Color3.fromRGB(50,  50,  66),
+
+	GREEN    = Color3.fromRGB(50,  210, 95),
+	AMBER    = Color3.fromRGB(255, 190, 45),
+}
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                       UI PRIMITIVES
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local function corner(p, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 8)
+	c.Parent = p
+end
+
+local function stroke(p, col, thick, trans)
+	local s = Instance.new("UIStroke")
+	s.Color        = col   or C.BORDER
+	s.Thickness    = thick or 1
+	s.Transparency = trans or 0
+	s.Parent       = p
+	return s
+end
+
+local function tween(obj, info, props)
+	TweenService:Create(obj, info, props):Play()
+end
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                          DRAGGABLE
+--            Versão robusta: suporta touch + mouse,
+--            clamps dentro da viewport
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local function MakeDraggable(frame)
+	local dragging  = false
+	local dragStart = nil
+	local startPos  = nil
+
+	local function clamp()
+		local vp  = workspace.CurrentCamera.ViewportSize
+		local abs = frame.AbsoluteSize
+		local pos = frame.Position
+		local x   = pos.X.Scale * vp.X + pos.X.Offset
+		local y   = pos.Y.Scale * vp.Y + pos.Y.Offset
+		x = math.clamp(x, 0, vp.X - abs.X)
+		y = math.clamp(y, 0, vp.Y - abs.Y)
+		frame.Position = UDim2.new(0, x, 0, y)
+	end
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging  = true
+			dragStart = input.Position
+			local vp  = workspace.CurrentCamera.ViewportSize
+			local p   = frame.Position
+			startPos  = UDim2.new(0, p.X.Scale * vp.X + p.X.Offset,
+			                      0, p.Y.Scale * vp.Y + p.Y.Offset)
+		end
+	end)
+
+	local function onMove(input)
+		if dragging and (
+			input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch
+		) then
+			local d = input.Position - dragStart
+			frame.Position = UDim2.new(0, startPos.X.Offset + d.X,
+			                           0, startPos.Y.Offset + d.Y)
+			clamp()
+		end
+	end
+
+	local function onEnd(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end
+
+	frame.InputChanged:Connect(onMove)
+	frame.InputEnded:Connect(onEnd)
+	UserInputService.InputChanged:Connect(onMove)
+	UserInputService.InputEnded:Connect(onEnd)
+end
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                       BUILD WIDGET
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local function CreateAFKWidget()
+	if PlayerGui:FindFirstChild("AntiAFKWidget") then
+		PlayerGui.AntiAFKWidget:Destroy()
+	end
+
+	-- ── ScreenGui ──────────────────────────────────────────────
+	local gui = Instance.new("ScreenGui")
+	gui.Name           = "AntiAFKWidget"
+	gui.ResetOnSpawn   = false
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.DisplayOrder   = 999
+	gui.IgnoreGuiInset = true
+	gui.Parent         = PlayerGui
+
+	-- ── Container (starts off-screen right for entrance anim) ──
+	local frame = Instance.new("Frame")
+	frame.Name             = "Container"
+	frame.Size             = UDim2.new(0, R.W, 0, R.H)
+	frame.Position         = UDim2.new(1, R.W + 20, 0, 20)
+	frame.BackgroundColor3 = C.BG
+	frame.BorderSizePixel  = 0
+	frame.Active           = true
+	frame.Parent           = gui
+	corner(frame, R.RADIUS)
+	stroke(frame, C.BORDER_LT, 1, 0)
+
+	-- Thin red accent line at top
+	local topBar = Instance.new("Frame")
+	topBar.Size             = UDim2.new(1, 0, 0, 2)
+	topBar.BackgroundColor3 = C.RED
+	topBar.BorderSizePixel  = 0
+	topBar.ZIndex           = 3
+	topBar.Parent           = frame
+	corner(topBar, R.RADIUS)
+
+	-- ── Header ─────────────────────────────────────────────────
+	local hdr = Instance.new("Frame")
+	hdr.Size             = UDim2.new(1, 0, 0, R.HDR_H)
+	hdr.BackgroundColor3 = C.SURFACE
+	hdr.BorderSizePixel  = 0
+	hdr.ZIndex           = 2
+	hdr.Parent           = frame
+	corner(hdr, R.RADIUS)
+
+	-- patch bottom of header
+	local hpatch = Instance.new("Frame")
+	hpatch.Size             = UDim2.new(1, 0, 0, R.RADIUS)
+	hpatch.Position         = UDim2.new(0, 0, 1, -R.RADIUS)
+	hpatch.BackgroundColor3 = C.SURFACE
+	hpatch.BorderSizePixel  = 0
+	hpatch.ZIndex           = 2
+	hpatch.Parent           = hdr
+
+	-- Shield icon badge
+	local IB = isMobile and 22 or 28
+	local ibadge = Instance.new("Frame")
+	ibadge.Size             = UDim2.new(0, IB, 0, IB)
+	ibadge.Position         = UDim2.new(0, R.PAD_X, 0.5, -(IB/2))
+	ibadge.BackgroundColor3 = C.RED_DARK
+	ibadge.BorderSizePixel  = 0
+	ibadge.ZIndex           = 3
+	ibadge.Parent           = hdr
+	corner(ibadge, 6)
+	stroke(ibadge, C.RED, 1, 0.4)
+
+	local iconLbl = Instance.new("TextLabel")
+	iconLbl.Size                   = UDim2.new(1, 0, 1, 0)
+	iconLbl.BackgroundTransparency = 1
+	iconLbl.Text                   = "🛡️"
+	iconLbl.TextSize               = isMobile and 11 or 14
+	iconLbl.Font                   = Enum.Font.GothamBold
+	iconLbl.ZIndex                 = 4
+	iconLbl.TextXAlignment         = Enum.TextXAlignment.Center
+	iconLbl.TextYAlignment         = Enum.TextYAlignment.Center
+	iconLbl.Parent                 = ibadge
+
+	-- Title
+	local TX = R.PAD_X + IB + 7
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size                   = UDim2.new(1, -(TX + R.PAD_X + 14), 0, R.HDR_H)
+	titleLbl.Position               = UDim2.new(0, TX, 0, 0)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Text                   = "ANTI-AFK"
+	titleLbl.TextColor3             = C.WHITE
+	titleLbl.TextSize               = R.TITLE_SZ
+	titleLbl.Font                   = Enum.Font.GothamBold
+	titleLbl.TextXAlignment         = Enum.TextXAlignment.Left
+	titleLbl.TextYAlignment         = Enum.TextYAlignment.Center
+	titleLbl.ZIndex                 = 3
+	titleLbl.Parent                 = hdr
+
+	-- Live dot (pulse animated later)
+	local dot = Instance.new("Frame")
+	dot.Name             = "Dot"
+	dot.Size             = UDim2.new(0, R.DOT_SZ, 0, R.DOT_SZ)
+	dot.Position         = UDim2.new(1, -(R.PAD_X + R.DOT_SZ - 2), 0.5, -(R.DOT_SZ/2))
+	dot.BackgroundColor3 = C.GREEN
+	dot.BorderSizePixel  = 0
+	dot.ZIndex           = 3
+	dot.Parent           = hdr
+	corner(dot, R.DOT_SZ)
+	stroke(dot, C.BG, 1.2, 0)
+
+	-- Header divider
+	local hdiv = Instance.new("Frame")
+	hdiv.Size             = UDim2.new(1, -(R.PAD_X*2), 0, 1)
+	hdiv.Position         = UDim2.new(0, R.PAD_X, 1, -1)
+	hdiv.BackgroundColor3 = C.BORDER_LT
+	hdiv.BorderSizePixel  = 0
+	hdiv.ZIndex           = 3
+	hdiv.Parent           = hdr
+
+	-- ── Rows ───────────────────────────────────────────────────
+	-- Calculate row Y start (below header + small padding)
+	local rowStartY = R.HDR_H + (isMobile and 6 or 8)
+
+	local function makeRow(icon, labelTxt, yOffset)
+		-- icon
+		local ic = Instance.new("TextLabel")
+		ic.Size                   = UDim2.new(0, R.ICON_SZ + 2, 0, R.ROW_H)
+		ic.Position               = UDim2.new(0, R.PAD_X, 0, yOffset)
+		ic.BackgroundTransparency = 1
+		ic.Text                   = icon
+		ic.TextSize               = R.ICON_SZ
+		ic.Font                   = Enum.Font.Gotham
+		ic.ZIndex                 = 3
+		ic.TextXAlignment         = Enum.TextXAlignment.Center
+		ic.TextYAlignment         = Enum.TextYAlignment.Center
+		ic.Parent                 = frame
+
+		-- label
+		local lbW = math.floor(R.W * 0.40)
+		local lb = Instance.new("TextLabel")
+		lb.Size                   = UDim2.new(0, lbW, 0, R.ROW_H)
+		lb.Position               = UDim2.new(0, R.PAD_X + R.ICON_SZ + 5, 0, yOffset)
+		lb.BackgroundTransparency = 1
+		lb.Text                   = labelTxt
+		lb.TextColor3             = C.MUTED
+		lb.TextSize               = R.LBL_SZ
+		lb.Font                   = Enum.Font.Gotham
+		lb.TextXAlignment         = Enum.TextXAlignment.Left
+		lb.TextYAlignment         = Enum.TextYAlignment.Center
+		lb.ZIndex                 = 3
+		lb.Parent                 = frame
+
+		-- value (right-aligned)
+		local val = Instance.new("TextLabel")
+		val.Size                   = UDim2.new(0, math.floor(R.W * 0.38), 0, R.ROW_H)
+		val.Position               = UDim2.new(1, -(math.floor(R.W * 0.38) + R.PAD_X), 0, yOffset)
+		val.BackgroundTransparency = 1
+		val.Text                   = "--"
+		val.TextColor3             = C.WHITE
+		val.TextSize               = R.VAL_SZ
+		val.Font                   = Enum.Font.GothamBold
+		val.TextXAlignment         = Enum.TextXAlignment.Right
+		val.TextYAlignment         = Enum.TextYAlignment.Center
+		val.ZIndex                 = 3
+		val.Parent                 = frame
+
+		return val
+	end
+
+	local y1 = rowStartY
+	local y2 = rowStartY + R.ROW_H + R.ROW_GAP
+	local y3 = rowStartY + (R.ROW_H + R.ROW_GAP) * 2
+
+	local afkVal  = makeRow("⏱",  "AFK time", y1)
+	local pingVal = makeRow("📶", "Ping",      y2)
+	local fpsVal  = makeRow("⚡", "FPS",       y3)
+
+	MakeDraggable(frame)
+
+	-- ── Entrance animation ──────────────────────────────────────
+	tween(frame,
+		TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{Position = UDim2.new(1, -(R.W + 16), 0, 20)}
+	)
+
+	-- ── Dot pulse ───────────────────────────────────────────────
+	tween(dot,
+		TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{
+			BackgroundTransparency = 0.65,
+			Size     = UDim2.new(0, R.DOT_SZ + 2, 0, R.DOT_SZ + 2),
+			Position = UDim2.new(1, -(R.PAD_X + R.DOT_SZ), 0.5, -((R.DOT_SZ+2)/2)),
+		}
+	)
+
+	return gui, afkVal, pingVal, fpsVal
+end
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                     FPS MEASUREMENT
+--      RenderStepped ring-buffer — média dos últimos N frames
+--      → FPS suavizado, sem spike de 1 frame
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local FPS_WINDOW = 30
+local fpsBuffer  = {}
+local fpsBufIdx  = 0
+local fpsSum     = 0
+local fpsCurrent = 0
+
+local function initFpsBuffer()
+	for i = 1, FPS_WINDOW do
+		fpsBuffer[i] = 1/60
+	end
+	fpsSum = FPS_WINDOW * (1/60)
+end
+
+local function updateFps(dt)
+	fpsBufIdx            = (fpsBufIdx % FPS_WINDOW) + 1
+	fpsSum               = fpsSum - fpsBuffer[fpsBufIdx] + dt
+	fpsBuffer[fpsBufIdx] = dt
+	fpsCurrent           = FPS_WINDOW / fpsSum
+end
+
+-- ╔══════════════════════════════════════════════════════════════╗
+--                    CONNECTIONS & LIFECYCLE
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local fpsConn       = nil
+local afkStartTime  = nil
+
+local function StartAFKWidget()
+	afkStartTime = tick()
+	initFpsBuffer()
+
+	local gui, afkVal, pingVal, fpsVal = CreateAFKWidget()
+
+	-- FPS: atualiza todo frame (RenderStepped)
+	fpsConn = RunService.RenderStepped:Connect(function(dt)
+		updateFps(dt)
+	end)
+
+	-- UI: atualiza a cada ~0.25s (não precisa escrever todo frame)
+	task.spawn(function()
+		while gui and gui.Parent do
+			-- ── AFK Timer ──────────────────────────────────────
+			local elapsed = tick() - afkStartTime
+			local mins    = math.floor(elapsed / 60)
+			local secs    = math.floor(elapsed % 60)
+			afkVal.Text = string.format("%02d:%02d", mins, secs)
+
+			if elapsed > 300 then
+				afkVal.TextColor3 = C.RED_GLOW
+			elseif elapsed > 120 then
+				afkVal.TextColor3 = C.AMBER
+			else
+				afkVal.TextColor3 = C.WHITE
+			end
+
+			-- ── Ping ───────────────────────────────────────────
+			local ok, ping = pcall(function()
+				return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+			end)
+			if ok then
+				pingVal.Text = ping .. " ms"
+				if ping > 200 then
+					pingVal.TextColor3 = C.RED_GLOW
+				elseif ping > 100 then
+					pingVal.TextColor3 = C.AMBER
+				else
+					pingVal.TextColor3 = C.GREEN
+				end
+			end
+
+			-- ── FPS ────────────────────────────────────────────
+			local fps = math.floor(fpsCurrent + 0.5)
+			fpsVal.Text = fps .. " fps"
+
+			if fps < 30 then
+				fpsVal.TextColor3 = C.RED_GLOW
+			elseif fps < 50 then
+				fpsVal.TextColor3 = C.AMBER
+			else
+				fpsVal.TextColor3 = C.GREEN
+			end
+
+			task.wait(0.25)
+		end
+	end)
+end
+
+local function StopAFKWidget()
+	if fpsConn then
+		fpsConn:Disconnect()
+		fpsConn = nil
+	end
+
+	local gui = PlayerGui:FindFirstChild("AntiAFKWidget")
+	if gui then
+		local frame = gui:FindFirstChild("Container")
+		if frame then
+			local exitInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+			local curPos   = frame.Position
+			tween(frame, exitInfo, {
+				Position = UDim2.new(1, R.W + 20, 0, curPos.Y.Offset),
+			})
+			for _, child in ipairs(frame:GetDescendants()) do
+				if child:IsA("Frame") then
+					pcall(function() tween(child, exitInfo, {BackgroundTransparency = 1}) end)
+				end
+				if child:IsA("TextLabel") then
+					pcall(function() tween(child, exitInfo, {TextTransparency = 1}) end)
+				end
+				if child:IsA("UIStroke") then
+					pcall(function() tween(child, exitInfo, {Transparency = 1}) end)
+				end
+			end
+			task.delay(0.28, function() gui:Destroy() end)
+		else
+			gui:Destroy()
+		end
+	end
+end
+
+return {
+	StartAFKWidget = StartAFKWidget,
+	StopAFKWidget  = StopAFKWidget,
+}
