@@ -118,8 +118,11 @@ end
 --                         SETUP
 -- ╚══════════════════════════════════════════════════════════════╝
 
-local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local VP       = workspace.CurrentCamera.ViewportSize
+local isMobile = UserInputService.TouchEnabled
+local cam      = workspace.CurrentCamera or workspace:WaitForChild("Camera")
+task.wait(0.05)
+local VP       = cam.ViewportSize
+if VP.X == 0 then task.wait(0.2); VP = cam.ViewportSize end
 
 -- ╔══════════════════════════════════════════════════════════════╗
 --                         PALETTE
