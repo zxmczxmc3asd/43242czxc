@@ -389,7 +389,7 @@ local function StartAFKWidget()
 			local elapsed = tick() - afkStartTime
 			local mins    = math.floor(elapsed / 60)
 			local secs    = math.floor(elapsed % 60)
-			afkVal.Text = string.format("%02d:%02d", mins, secs)
+			afkVal.Text = string.format("%dm %02ds", mins, secs)
 
 			if elapsed > 300 then
 				afkVal.TextColor3 = C.RED_GLOW
